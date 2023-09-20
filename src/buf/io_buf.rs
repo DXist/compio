@@ -104,7 +104,7 @@ unsafe impl<#[cfg(feature = "allocator_api")] A: Allocator + Unpin + 'static> Io
     }
 }
 
-unsafe impl IoBuf<'static> for &'static mut [u8] {
+unsafe impl<'a> IoBuf<'a> for &'a mut [u8] {
     fn as_buf_ptr(&self) -> *const u8 {
         self.as_ptr()
     }
@@ -283,7 +283,7 @@ unsafe impl<#[cfg(feature = "allocator_api")] A: Allocator + Unpin + 'static> Io
     }
 }
 
-unsafe impl IoBufMut<'static> for &'static mut [u8] {
+unsafe impl<'a> IoBufMut<'a> for &'a mut [u8] {
     fn as_buf_mut_ptr(&mut self) -> *mut u8 {
         self.as_mut_ptr()
     }
