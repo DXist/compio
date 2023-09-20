@@ -220,7 +220,7 @@ unsafe impl<'arena> IoBuf<'arena> for std::io::BorrowedBuf<'arena> {
 }
 
 #[cfg(feature = "arrayvec")]
-unsafe impl<const N: usize> IoBuf for arrayvec::ArrayVec<u8, N> {
+unsafe impl<const N: usize> IoBuf<'static> for arrayvec::ArrayVec<u8, N> {
     fn as_buf_ptr(&self) -> *const u8 {
         self.as_ptr()
     }
@@ -316,7 +316,7 @@ unsafe impl<'arena> IoBufMut<'arena> for std::io::BorrowedBuf<'arena> {
 }
 
 #[cfg(feature = "arrayvec")]
-unsafe impl<const N: usize> IoBufMut for arrayvec::ArrayVec<u8, N> {
+unsafe impl<const N: usize> IoBufMut<'static> for arrayvec::ArrayVec<u8, N> {
     fn as_buf_mut_ptr(&mut self) -> *mut u8 {
         self.as_mut_ptr()
     }
