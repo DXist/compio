@@ -1,3 +1,5 @@
+#[cfg(feature = "allocator_api")]
+use std::alloc::Allocator;
 #[doc(no_inline)]
 pub use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::{
@@ -6,15 +8,16 @@ use std::{
     ops::ControlFlow,
     time::Duration,
 };
+use crate::vec_deque_alloc;
 
 pub(crate) use libc::{sockaddr_storage, socklen_t};
 use mio::{
     event::{Event, Source},
     unix::SourceFd,
-    Events, Interest, Poll, Token,
+    Events, Interest, Poll, Token, Registry,
 };
 
-use crate::driver::{Entry, Operation, Poller};
+use crate::driver::{Entry, OpObject, Poller, Operation};
 
 pub(crate) mod op;
 
@@ -63,6 +66,7 @@ pub struct WaitArg {
 
 /// Low-level driver of mio.
 pub struct Driver<'arena> {
+    squeue: Vec<OpObject<'arena>>,
     events: Events,
     poll: Poll,
     waiting: HashMap<usize, WaitEntry<'arena>>,
@@ -77,8 +81,7 @@ struct WaitEntry<'arena> {
 }
 
 impl<'arena> WaitEntry<'arena> {
-    fn new(mio_entry: Operation<'arena>, arg: WaitArg) -> Self {
-        let (op, user_data): (&'arena mut dyn OpCode, usize) = mio_entry.into();
+    fn new(op: &'arena mut dyn OpCode, user_data: usize, arg: WaitArg) -> Self {
         Self { op, arg, user_data }
     }
 }
@@ -94,6 +97,7 @@ impl<'arena> Driver<'arena> {
         let entries = entries as usize; // for the sake of consistency, use u32 like iour
 
         Ok(Self {
+            squeue: Vec::with_capacity(entries),
             events: Events::with_capacity(entries),
             poll: Poll::new()?,
             waiting: HashMap::new(),
@@ -101,82 +105,29 @@ impl<'arena> Driver<'arena> {
         })
     }
 
-    fn submit(&mut self, entry: Operation<'arena>, arg: WaitArg) -> io::Result<()> {
-        if !self.cancelled.remove(&entry.user_data) {
-            let token = Token(entry.user_data);
+    fn submit(cancelled: &mut HashSet<usize>, waiting: &mut HashMap<usize, WaitEntry<'arena>>, registry: &Registry,
+            op: &'arena mut dyn OpCode, user_data: usize, arg: WaitArg) -> io::Result<()> {
+        if !cancelled.remove(&user_data) {
+            let token = Token(user_data);
 
-            SourceFd(&arg.fd).register(self.poll.registry(), token, arg.interest)?;
+            SourceFd(&arg.fd).register(registry, token, arg.interest)?;
 
             // Only insert the entry after it was registered successfully
-            self.waiting
-                .insert(entry.user_data, WaitEntry::new(entry, arg));
-        }
-        Ok(())
-    }
-
-    /// Register all operations in the squeue to mio.
-    fn submit_squeue(
-        &mut self,
-        ops: &mut impl Iterator<Item = Operation<'arena>>,
-        entries: &mut impl Extend<Entry>,
-    ) -> io::Result<bool> {
-        let mut extended = false;
-        for mut entry in ops {
-            // io buffers are Unpin so no need to pin
-            match entry.opcode().pre_submit() {
-                Ok(Decision::Wait(arg)) => {
-                    self.submit(entry, arg)?;
-                }
-                Ok(Decision::Completed(res)) => {
-                    entries.extend(Some(Entry::new(entry.user_data, Ok(res))));
-                    extended = true;
-                }
-                Err(err) => {
-                    entries.extend(Some(Entry::new(entry.user_data, Err(err))));
-                    extended = true;
-                }
-            }
-        }
-
-        Ok(extended)
-    }
-
-    /// Poll all events from mio, call `perform` on op and push them into
-    /// cqueue.
-    fn poll_impl(
-        &mut self,
-        timeout: Option<Duration>,
-        entries: &mut impl Extend<Entry>,
-    ) -> io::Result<()> {
-        self.poll.poll(&mut self.events, timeout)?;
-        for event in &self.events {
-            let token = event.token();
-            let entry = self
-                .waiting
-                .get_mut(&token.0)
-                .expect("Unknown token returned by mio"); // XXX: Should this be silently ignored?
-            let res = match entry.op.on_event(event) {
-                Ok(ControlFlow::Continue(_)) => continue,
-                Ok(ControlFlow::Break(res)) => Ok(res),
-                Err(err) => Err(err),
-            };
-            self.poll
-                .registry()
-                .deregister(&mut SourceFd(&entry.arg.fd))?;
-            let entry = Entry::new(entry.user_data, res);
-            entries.extend(Some(entry));
-            self.waiting.remove(&token.0);
+            waiting
+                .insert(user_data, WaitEntry::new(op, user_data, arg));
         }
         Ok(())
     }
 }
 
 impl<'arena> Poller<'arena> for Driver<'arena> {
+    #[inline]
     fn attach(&mut self, _fd: RawFd) -> io::Result<()> {
         Ok(())
     }
 
-    fn cancel(&mut self, user_data: usize) {
+    #[inline]
+    fn try_cancel(&mut self, user_data: usize) -> Result<(), ()>{
         if let Some(entry) = self.waiting.remove(&user_data) {
             self.poll
                 .registry()
@@ -185,18 +136,125 @@ impl<'arena> Poller<'arena> for Driver<'arena> {
         } else {
             self.cancelled.insert(user_data);
         }
+        Ok(())
     }
 
-    unsafe fn poll(
+    #[inline]
+    fn try_push<O: OpCode>(&mut self, op: Operation<'arena, O>) -> Result<(), Operation<'arena, O>> {
+        if self.capacity_left() > 0 {
+            self.squeue.push(OpObject::from(op));
+            Ok(())
+        }
+        else {
+            Err(op)
+        }
+    }
+
+    #[inline]
+    fn try_push_dyn(&mut self, op: OpObject<'arena>) -> Result<(), OpObject<'arena>> {
+        if self.capacity_left() > 0 {
+            self.squeue.push(op);
+            Ok(())
+        }
+        else {
+            Err(op)
+        }
+    }
+
+    #[inline]
+    fn push_queue<#[cfg(feature = "allocator_api")] A: Allocator + Unpin + 'arena>(&mut self, ops_queue: &mut vec_deque_alloc!(OpObject<'arena>, A)) {
+        let till = self.capacity_left().min(ops_queue.len());
+        self.squeue.extend(ops_queue.drain(..till));
+    }
+
+    #[inline]
+    fn capacity_left(&self) -> usize {
+        self.squeue.capacity() - self.squeue.len()
+    }
+
+    unsafe fn submit_and_wait_completed(
         &mut self,
         timeout: Option<Duration>,
-        ops: &mut impl Iterator<Item = Operation<'arena>>,
         entries: &mut impl Extend<Entry>,
     ) -> io::Result<()> {
-        let extended = self.submit_squeue(ops, entries)?;
-        if !extended {
-            self.poll_impl(timeout, entries)?;
-        }
+        let cancelled = &mut self.cancelled;
+        let waiting = &mut self.waiting;
+        let mut at_least_one_completion = false;
+
+        let submit_squeue_iter = {
+            let registry = self.poll.registry();
+
+            self.squeue.drain(..).filter_map(|entry| {
+                let user_data = entry.user_data;
+                let op = entry.op;
+                // io buffers are Unpin so no need to pin
+                match op.pre_submit() {
+                    Ok(Decision::Wait(arg)) => {
+                        if let Err(err) = Self::submit(cancelled, waiting, registry, op, user_data, arg) {
+                            at_least_one_completion = true;
+                            Some(Entry::new(user_data, Err(err)))
+                        }
+                        else {
+                            None
+                        }
+                    }
+                    Ok(Decision::Completed(res)) => {
+                        at_least_one_completion = true;
+                        Some(Entry::new(user_data, Ok(res)))
+                    }
+                    Err(err) => {
+                        at_least_one_completion = true;
+                        Some(Entry::new(user_data, Err(err)))
+                    }
+                }
+            })
+        };
+
+        entries.extend(submit_squeue_iter);
+
+        if at_least_one_completion { return Ok(()) };
+
+        // poll only when nothing was completed
+
+        loop {
+            match self.poll.poll(&mut self.events, timeout) {
+                Ok(_) => break Ok(()),
+                Err(err) if err.kind() == io::ErrorKind::Interrupted => {
+                    continue
+                }
+                Err(err) => break Err(err)
+            };
+
+        }?;
+
+        let registry = self.poll.registry();
+        let completed_iter = self.events.iter().filter_map(|event| {
+            let token = event.token();
+            let (user_data, fd, maybe_result) = {
+                let entry = waiting
+                    .get_mut(&token.0)
+                    .expect("Unknown token returned by mio"); // XXX: Should this be silently ignored?
+                let maybe_result = match entry.op.on_event(event) {
+                    Ok(ControlFlow::Continue(_)) => None,
+                    Ok(ControlFlow::Break(res)) => Some(Ok(res)),
+                    Err(err) => Some(Err(err)),
+                };
+                (entry.user_data, &entry.arg.fd, maybe_result)
+            };
+            if let Some(result) = maybe_result {
+                let res = if let Err(err) = registry
+                    .deregister(&mut SourceFd(fd)) {
+                        Err(err)
+                }
+                else {
+                    result
+                };
+                waiting.remove(&token.0);
+                Some(Entry::new(user_data, res))
+            }
+            else { None }
+        });
+        entries.extend(completed_iter);
         Ok(())
     }
 }

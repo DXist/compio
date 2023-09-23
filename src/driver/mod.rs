@@ -1,7 +1,11 @@
 //! The platform-specified driver.
 //! Some types differ by compilation target.
 
+#[cfg(feature = "allocator_api")]
+use std::alloc::Allocator;
 use std::{io, time::Duration};
+use crate::vec_deque_alloc;
+
 #[cfg(unix)]
 mod unix;
 
@@ -29,6 +33,7 @@ cfg_if::cfg_if! {
 ///
 /// ```
 /// use std::net::SocketAddr;
+/// use std::collections::VecDeque;
 ///
 /// use arrayvec::ArrayVec;
 /// use compio::{
@@ -62,17 +67,18 @@ cfg_if::cfg_if! {
 /// let buf = Vec::with_capacity(32);
 /// let mut op_read = op::Recv::new(other_socket.as_raw_fd(), BufWrapperMut::from(buf));
 ///
-/// let ops = [(&mut op_write, 1).into(), (&mut op_read, 2).into()];
+/// let mut ops = VecDeque::from([(&mut op_write, 1).into(), (&mut op_read, 2).into()]);
+/// driver.push_queue(&mut ops);
 /// let mut entries = ArrayVec::<Entry, 2>::new();
 /// unsafe {
 ///     driver
-///         .poll(None, &mut ops.into_iter(), &mut entries)
+///         .submit_and_wait_completed(None, &mut entries)
 ///         .unwrap()
 /// };
 /// while entries.len() < 2 {
 ///     unsafe {
 ///         driver
-///             .poll(None, &mut [].into_iter(), &mut entries)
+///             .submit_and_wait_completed(None, &mut entries)
 ///             .unwrap()
 ///     };
 /// }
@@ -105,24 +111,38 @@ pub trait Poller<'arena> {
     /// * io-uring/mio: it will do nothing and return `Ok(())`
     fn attach(&mut self, fd: RawFd) -> io::Result<()>;
 
-    /// Cancel an operation with the pushed user-defined data.
+    /// Try to cancel an operation with the pushed user-defined data.
     ///
-    /// The cancellation is not reliable. The underlying operation may continue,
-    /// but just don't return from [`Poller::poll`]. Therefore, although an
-    /// operation is cancelled, you should not reuse its `user_data`.
+    /// If submission queue is full the error is returned. The caller should queue the cancelation request or submit queued entries first.
     ///
-    /// It is well-defined to cancel before polling. If the submitted operation
-    /// contains a cancelled user-defined data, the operation will be ignored.
-    fn cancel(&mut self, user_data: usize);
+    /// If the cancellation is not possible the operation will run till completed.
+    ///
+    /// When an operation is cancelled or completed successfully `submit_and_wait_completed` will output it in `completed` iterator.
+    fn try_cancel(&mut self, user_data: usize) -> Result<(), ()>;
 
-    /// Poll the driver with an optional timeout.
+    /// Try to push operation into submission queue
     ///
-    /// The operations in `ops` may not be totally consumed. This method will
-    /// try its best to consume them, but if an error occurs, it will return
-    /// immediately.
+    /// If the queue is full the submitted operation is returned as an error.
+    /// Caller could use an external queue like VecDeque<OpObject<'a>> to keep unqueued operations.
+    fn try_push<O: OpCode>(&mut self, op: Operation<'arena, O>) -> Result<(), Operation<'arena, O>>;
+
+    /// Try to push operation object into submission queue
+    fn try_push_dyn(&mut self, op: OpObject<'arena>) -> Result<(), OpObject<'arena>>;
+
+    /// Push multiple operations into submission queue from an external VecDeque
     ///
-    /// If there are no tasks completed, this call will block and wait.
+    /// After push the external queue could contain operations that didn't fit into the submission queue
+    fn push_queue<#[cfg(feature = "allocator_api")] A: Allocator + Unpin + 'arena>(&mut self, ops_queue: &mut vec_deque_alloc!(OpObject<'arena>, A));
+
+    /// Returns submission queue capacity left for pushing.
+    fn capacity_left(&self) -> usize;
+
+    /// Submit queued operations and wait for completed entries with an optional timeout.
+    ///
+    /// If there are no operations completed and `timeout` > 0  this call will block and wait.
     /// If no timeout specified, it will block forever.
+    /// If timeout is `Duration::ZERO` no waiting is performed.
+    ///
     /// To interrupt the blocking, see [`Event`].
     ///
     /// [`Event`]: crate::event::Event
@@ -131,21 +151,54 @@ pub trait Poller<'arena> {
     ///
     /// * Operations should be alive until [`Poller::poll`] returns its result.
     /// * User defined data should be unique.
-    unsafe fn poll(
+    unsafe fn submit_and_wait_completed(
         &mut self,
         timeout: Option<Duration>,
-        ops: &mut impl Iterator<Item = Operation<'arena>>,
-        entries: &mut impl Extend<Entry>,
+        completed: &mut impl Extend<Entry>,
     ) -> io::Result<()>;
 }
 
 /// An operation with a unique user defined data.
-pub struct Operation<'a> {
+pub struct Operation<'a, O: OpCode> {
+    op: &'a mut O,
+    user_data: usize,
+}
+
+impl<'a, O: OpCode> Operation<'a, O> {
+    /// Create [`Operation`].
+    pub fn new(op: &'a mut O, user_data: usize) -> Self {
+        Self { op, user_data }
+    }
+
+    /// Get the opcode.
+    pub fn opcode(&mut self) -> &mut O {
+        self.op
+    }
+
+    /// Get the user defined data.
+    pub fn user_data(&self) -> usize {
+        self.user_data
+    }
+}
+
+impl<'a, O: OpCode> From<(&'a mut O, usize)> for Operation<'a, O> {
+    fn from((op, user_data): (&'a mut O, usize)) -> Self {
+        Self::new(op, user_data)
+    }
+}
+
+impl<'a, O: OpCode> From<Operation<'a, O>> for (&'a mut O, usize) {
+    fn from(other: Operation<'a, O>) -> Self {
+        (other.op, other.user_data)
+    }
+}
+/// An operation object with a unique user defined data.
+pub struct OpObject<'a> {
     op: &'a mut dyn OpCode,
     user_data: usize,
 }
 
-impl<'a> Operation<'a> {
+impl<'a> OpObject<'a> {
     /// Create [`Operation`].
     pub fn new(op: &'a mut dyn OpCode, user_data: usize) -> Self {
         Self { op, user_data }
@@ -162,20 +215,26 @@ impl<'a> Operation<'a> {
     }
 }
 
-impl<'a, O: OpCode> From<(&'a mut O, usize)> for Operation<'a> {
+impl<'a, O: OpCode> From<(&'a mut O, usize)> for OpObject<'a> {
     fn from((op, user_data): (&'a mut O, usize)) -> Self {
         Self::new(op, user_data)
     }
 }
 
-impl<'a> From<(&'a mut dyn OpCode, usize)> for Operation<'a> {
+impl<'a> From<(&'a mut dyn OpCode, usize)> for OpObject<'a> {
     fn from((op, user_data): (&'a mut dyn OpCode, usize)) -> Self {
         Self::new(op, user_data)
     }
 }
 
-impl<'a> From<Operation<'a>> for (&'a mut dyn OpCode, usize) {
-    fn from(other: Operation<'a>) -> Self {
+impl<'a, O: OpCode> From<Operation<'a, O>> for OpObject<'a> {
+    fn from(other: Operation<'a, O>) -> Self {
+        Self::new(other.op, other.user_data)
+    }
+}
+
+impl<'a> From<OpObject<'a>> for (&'a mut dyn OpCode, usize) {
+    fn from(other: OpObject<'a>) -> Self {
         (other.op, other.user_data)
     }
 }

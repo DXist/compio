@@ -36,7 +36,6 @@ futures-util = { version = "0.3", optional = true }
 # may be excluded from linking if the unstable equivalent is used
 once_cell = "1"
 slab = { version = "0.4", optional = true }
-smallvec = { version = "1", optional = true }
 socket2 = { version = ">=0.5.4", features = ["all"] }
 
 # Shared dev dependencies for all platforms
@@ -50,7 +49,6 @@ tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt"] }
 
 # Windows specific dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
-arrayvec = "0.7"
 widestring = "1"
 windows-sys = { version = "0.48", features = [
     "Win32_Foundation",
@@ -80,7 +78,7 @@ libc = "0.2"
 
 [features]
 default = ["runtime"]
-runtime = ["dep:async-task", "dep:futures-util", "dep:slab", "dep:smallvec"]
+runtime = ["dep:async-task", "dep:futures-util", "dep:slab"]
 event = ["runtime", "arrayvec"]
 signal = ["event"]
 time = ["runtime"]

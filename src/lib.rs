@@ -155,3 +155,20 @@ macro_rules! vec_alloc {
 }
 
 pub(crate) use vec_alloc;
+
+
+#[cfg(not(feature = "allocator_api"))]
+macro_rules! vec_deque_alloc {
+    ($t:ty, $a:ident) => {
+        std::collections::VecDeque<$t>
+    };
+}
+
+#[cfg(feature = "allocator_api")]
+macro_rules! vec_deque_alloc {
+    ($t:ty, $a:ident) => {
+        std::collections::VecDeque<$t, $a>
+    };
+}
+
+pub(crate) use vec_deque_alloc;

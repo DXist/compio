@@ -3,7 +3,7 @@
 //! The operation itself doesn't perform anything.
 //! You need to pass them to [`crate::driver::Driver`], and poll the driver.
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, time::Duration};
 
 use socket2::SockAddr;
 
@@ -206,3 +206,24 @@ pub type RecvFromVectored<'arena, T> = RecvFromImpl<'arena, VectoredBufWrapper<'
 pub type SendTo<'arena, T> = SendToImpl<'arena, T>;
 /// Send data to address with vectored buffer.
 pub type SendToVectored<'arena, T> = SendToImpl<'arena, VectoredBufWrapper<'arena, T>>;
+
+/// Timeout operation completes after th given relative timeout duration.
+///
+/// if `prefer_boot_time` is set then the operation prefers to take into account
+/// time spent in low power modes / suspend - the flag is supported only by
+/// io_uring driver
+#[derive(Debug)]
+pub struct Timeout {
+    pub(crate) duration: Duration,
+    pub(crate) prefer_boot_time: bool,
+}
+
+impl Timeout {
+    /// Create [`Timeout`].
+    pub fn new(duration: Duration, prefer_boot_time: bool) -> Self {
+        Self {
+            duration,
+            prefer_boot_time,
+        }
+    }
+}

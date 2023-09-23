@@ -1,4 +1,5 @@
 use std::{io, time::Duration};
+use std::collections::VecDeque;
 
 use arrayvec::ArrayVec;
 use compio::{
@@ -14,16 +15,16 @@ fn cancel_before_poll() {
     let file = File::open("Cargo.toml").unwrap();
     driver.attach(file.as_raw_fd()).unwrap();
 
-    driver.cancel(0);
+    driver.try_cancel(0).unwrap();
 
     let mut op = ReadAt::new(file.as_raw_fd(), 0, Vec::with_capacity(8));
-    let ops = [(&mut op, 0).into()];
+    let mut ops = VecDeque::from([(&mut op, 0).into()]);
+    driver.push_queue(&mut ops);
     let mut entries = ArrayVec::<Entry, 1>::new();
 
     let res = unsafe {
-        driver.poll(
+        driver.submit_and_wait_completed(
             Some(Duration::from_secs(1)),
-            &mut ops.into_iter(),
             &mut entries,
         )
     };

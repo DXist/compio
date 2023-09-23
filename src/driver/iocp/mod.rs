@@ -1,3 +1,5 @@
+#[cfg(feature = "allocator_api")]
+use std::alloc::Allocator;
 use std::{
     collections::HashSet,
     io,
@@ -12,7 +14,6 @@ use std::{
     time::Duration,
 };
 
-use arrayvec::ArrayVec;
 use windows_sys::Win32::{
     Foundation::{
         RtlNtStatusToDosError, ERROR_HANDLE_EOF, ERROR_IO_INCOMPLETE, ERROR_NO_DATA,
@@ -29,7 +30,8 @@ use windows_sys::Win32::{
 };
 
 use crate::{
-    driver::{Entry, Operation, Poller},
+    driver::{Entry, Operation, Poller, OpObject},
+    vec_deque_alloc,
     syscall,
 };
 
@@ -115,37 +117,41 @@ pub trait OpCode {
     unsafe fn operate(&mut self, optr: *mut OVERLAPPED) -> Poll<io::Result<usize>>;
 }
 
+const DEFAULT_CAPACITY: usize = 1024;
+
 /// Low-level driver of IOCP.
 pub struct Driver<'arena> {
     port: OwnedHandle,
+    squeue: Vec<OpObject<'arena>>,
+    iocp_entries: Vec<OVERLAPPED_ENTRY>,
     cancelled: HashSet<usize>,
     _lifetime: PhantomData<&'arena ()>,
 }
 
 impl<'arena> Driver<'arena> {
-    const DEFAULT_CAPACITY: usize = 1024;
 
     /// Create a new IOCP.
     pub fn new() -> io::Result<Self> {
-        Self::with_entries(Self::DEFAULT_CAPACITY as _)
+        Self::with_entries(DEFAULT_CAPACITY as _)
     }
 
     /// The same as [`Driver::new`].
-    pub fn with_entries(_entries: u32) -> io::Result<Self> {
+    pub fn with_entries(entries: u32) -> io::Result<Self> {
         let port = syscall!(BOOL, CreateIoCompletionPort(INVALID_HANDLE_VALUE, 0, 0, 0))?;
         let port = unsafe { OwnedHandle::from_raw_handle(port as _) };
         Ok(Self {
             port,
+            squeue: Vec::with_capacity(entries as usize),
+            iocp_entries: Vec::with_capacity(entries as usize),
             cancelled: HashSet::default(),
             _lifetime: PhantomData,
         })
     }
 
     #[inline]
-    fn poll_impl<const N: usize>(
+    fn poll_impl(
         &mut self,
         timeout: Option<Duration>,
-        iocp_entries: &mut ArrayVec<OVERLAPPED_ENTRY, N>,
     ) -> io::Result<()> {
         let mut recv_count = 0;
         let timeout = match timeout {
@@ -156,24 +162,24 @@ impl<'arena> Driver<'arena> {
             BOOL,
             GetQueuedCompletionStatusEx(
                 self.port.as_raw_handle() as _,
-                iocp_entries.as_mut_ptr(),
-                N as _,
+                self.iocp_entries.as_mut_ptr(),
+                self.iocp_entries.len() as _,
                 &mut recv_count,
                 timeout,
                 0,
             )
         )?;
         unsafe {
-            iocp_entries.set_len(recv_count as _);
+            self.iocp_entries.set_len(recv_count as _);
         }
         Ok(())
     }
 
-    fn create_entry(&mut self, iocp_entry: OVERLAPPED_ENTRY) -> Option<Entry> {
+    fn create_entry(cancelled: &mut HashSet<usize>, iocp_entry: OVERLAPPED_ENTRY) -> Option<Entry> {
         let transferred = iocp_entry.dwNumberOfBytesTransferred;
         let overlapped_ptr = iocp_entry.lpOverlapped;
         let overlapped = unsafe { Box::from_raw(overlapped_ptr.cast::<Overlapped>()) };
-        if self.cancelled.remove(&overlapped.user_data) {
+        if cancelled.remove(&overlapped.user_data) {
             return None;
         }
         let res = if matches!(
@@ -236,6 +242,7 @@ fn ntstatus_from_win32(x: i32) -> NTSTATUS {
 }
 
 impl<'arena> Poller<'arena> for Driver<'arena> {
+    #[inline]
     fn attach(&mut self, fd: RawFd) -> io::Result<()> {
         syscall!(
             BOOL,
@@ -244,17 +251,51 @@ impl<'arena> Poller<'arena> for Driver<'arena> {
         Ok(())
     }
 
-    fn cancel(&mut self, user_data: usize) {
+    #[inline]
+    fn try_cancel(&mut self, user_data: usize) -> Result<(), ()> {
         self.cancelled.insert(user_data);
+        Ok(())
     }
 
-    unsafe fn poll(
+    #[inline]
+    fn try_push<O: OpCode>(&mut self, op: Operation<'arena, O>) -> Result<(), Operation<'arena, O>> {
+        if self.capacity_left() > 0 {
+            self.squeue.push(OpObject::from(op));
+            Ok(())
+        }
+        else {
+            Err(op)
+        }
+    }
+
+    #[inline]
+    fn try_push_dyn(&mut self, op: OpObject<'arena>) -> Result<(), OpObject<'arena>> {
+        if self.capacity_left() > 0 {
+            self.squeue.push(op);
+            Ok(())
+        }
+        else {
+            Err(op)
+        }
+    }
+
+    #[inline]
+    fn push_queue<#[cfg(feature = "allocator_api")] A: Allocator + Unpin + 'arena>(&mut self, ops_queue: &mut vec_deque_alloc!(OpObject<'arena>, A)) {
+        let till = self.capacity_left().min(ops_queue.len());
+        self.squeue.extend(ops_queue.drain(..till));
+    }
+
+    #[inline]
+    fn capacity_left(&self) -> usize {
+        self.squeue.capacity() - self.squeue.len()
+    }
+
+    unsafe fn submit_and_wait_completed(
         &mut self,
         timeout: Option<Duration>,
-        ops: &mut impl Iterator<Item = Operation<'arena>>,
         entries: &mut impl Extend<Entry>,
     ) -> io::Result<()> {
-        for mut operation in ops {
+        for mut operation in self.squeue.drain(..) {
             if !self.cancelled.remove(&operation.user_data()) {
                 let overlapped = Box::new(Overlapped::new(operation.user_data()));
                 let overlapped_ptr = Box::into_raw(overlapped);
@@ -267,17 +308,20 @@ impl<'arena> Poller<'arena> for Driver<'arena> {
             }
         }
 
-        // Prevent stack growth.
-        const CAP: usize = Driver::DEFAULT_CAPACITY;
-        let mut iocp_entries = ArrayVec::<OVERLAPPED_ENTRY, CAP>::new();
-        self.poll_impl(timeout, &mut iocp_entries)?;
-        entries.extend(iocp_entries.drain(..).filter_map(|e| self.create_entry(e)));
+        self.poll_impl(timeout)?;
+        {
+            let cancelled = &mut self.cancelled;
+            entries.extend(self.iocp_entries.drain(..).filter_map(|e| Self::create_entry(cancelled, e)));
+        }
 
         // See if there are remaining entries.
         loop {
-            match self.poll_impl(Some(Duration::ZERO), &mut iocp_entries) {
+            match self.poll_impl(Some(Duration::ZERO)) {
                 Ok(()) => {
-                    entries.extend(iocp_entries.drain(..).filter_map(|e| self.create_entry(e)));
+                    {
+                        let cancelled = &mut self.cancelled;
+                        entries.extend(self.iocp_entries.drain(..).filter_map(|e| Self::create_entry(cancelled, e)));
+                    }
                 }
                 Err(e) => match e.kind() {
                     io::ErrorKind::TimedOut => break,

@@ -3,17 +3,16 @@ use std::{
     collections::VecDeque,
     future::Future,
     io,
-    ptr::NonNull,
+    time::Duration,
     task::{Context, Poll},
 };
 
 use async_task::{Runnable, Task};
-use smallvec::SmallVec;
 
 #[cfg(feature = "time")]
 use crate::task::time::{TimerFuture, TimerRuntime};
 use crate::{
-    driver::{AsRawFd, Driver, Entry, OpCode, Poller, RawFd},
+    driver::{AsRawFd, Driver, OpObject, OpCode, Poller, RawFd},
     task::op::{OpFuture, OpRuntime},
     Key,
 };
@@ -21,7 +20,8 @@ use crate::{
 pub(crate) struct Runtime {
     driver: RefCell<Driver<'static>>,
     runnables: RefCell<VecDeque<Runnable>>,
-    squeue: RefCell<VecDeque<usize>>,
+    unqueued_operations: RefCell<VecDeque<OpObject<'static>>>,
+    unqueued_cancels: RefCell<VecDeque<usize>>,
     op_runtime: RefCell<OpRuntime>,
     #[cfg(feature = "time")]
     timer_runtime: RefCell<TimerRuntime>,
@@ -32,7 +32,8 @@ impl Runtime {
         Ok(Self {
             driver: RefCell::new(Driver::new()?),
             runnables: RefCell::default(),
-            squeue: RefCell::default(),
+            unqueued_operations: RefCell::default(),
+            unqueued_cancels: RefCell::default(),
             op_runtime: RefCell::default(),
             #[cfg(feature = "time")]
             timer_runtime: RefCell::new(TimerRuntime::new()),
@@ -84,8 +85,11 @@ impl Runtime {
         op: T,
     ) -> impl Future<Output = (io::Result<usize>, T)> {
         let mut op_runtime = self.op_runtime.borrow_mut();
-        let user_data = op_runtime.insert(op);
-        self.squeue.borrow_mut().push_back(*user_data);
+        let (user_data, op_mut) = op_runtime.insert(op);
+        let op_object = OpObject::new(op_mut, *user_data);
+        if let Err(op_object) = self.driver.borrow_mut().try_push_dyn(op_object) {
+            self.unqueued_operations.borrow_mut().push_back(op_object);
+        };
         self.spawn(OpFuture::new(user_data))
     }
 
@@ -107,8 +111,12 @@ impl Runtime {
     }
 
     pub fn cancel_op<T>(&self, user_data: Key<T>) {
-        self.driver.borrow_mut().cancel(*user_data);
-        self.op_runtime.borrow_mut().cancel(user_data);
+        if let Err(_) = self.driver.borrow_mut().try_cancel(*user_data) {
+            _ = self.unqueued_cancels.borrow_mut().push_back(*user_data)
+        }
+        else {
+            self.op_runtime.borrow_mut().cancel(user_data);
+        }
     }
 
     #[cfg(feature = "time")]
@@ -116,19 +124,22 @@ impl Runtime {
         self.timer_runtime.borrow_mut().cancel(key);
     }
 
-    pub fn poll_task<T: OpCode>(
+    pub fn poll_task<T: OpCode + 'static>(
         &self,
         cx: &mut Context,
         user_data: Key<T>,
     ) -> Poll<(io::Result<usize>, T)> {
         let mut op_runtime = self.op_runtime.borrow_mut();
         if op_runtime.has_result(user_data) {
-            let op = op_runtime.remove(user_data);
-            Poll::Ready((op.result.unwrap(), unsafe {
-                op.op
-                    .expect("`poll_task` called on dummy Op")
-                    .into_inner::<T>()
-            }))
+            let (maybe_result, maybe_op) = op_runtime.remove(user_data);
+            let result = maybe_result.unwrap();
+            let operation = maybe_op.expect("`poll_task` is not called on dummy Op");
+            Poll::Ready(
+                (
+                    result,
+                    operation
+                )
+            )
         } else {
             op_runtime.update_waker(user_data, cx.waker().clone());
             Poll::Pending
@@ -139,8 +150,8 @@ impl Runtime {
     pub fn poll_dummy(&self, cx: &mut Context, user_data: Key<()>) -> Poll<io::Result<usize>> {
         let mut op_runtime = self.op_runtime.borrow_mut();
         if op_runtime.has_result(user_data) {
-            let op = op_runtime.remove(user_data);
-            Poll::Ready(op.result.unwrap())
+            let (maybe_result, _) = op_runtime.remove(user_data);
+            Poll::Ready(maybe_result.unwrap())
         } else {
             op_runtime.update_waker(user_data, cx.waker().clone());
             Poll::Pending
@@ -159,36 +170,42 @@ impl Runtime {
     }
 
     fn poll(&self) {
-        #[cfg(not(feature = "time"))]
-        let timeout = None;
-        #[cfg(feature = "time")]
-        let timeout = self.timer_runtime.borrow().min_timeout();
-
-        let mut squeue = self.squeue.borrow_mut();
-        let mut ops = std::iter::from_fn(|| {
-            squeue.pop_front().map(|user_data| {
-                let mut op = NonNull::from(self.op_runtime.borrow_mut().get_raw_op(user_data));
-                // Safety: op won't outlive.
-                (unsafe { op.as_mut() }.as_dyn_mut(), user_data).into()
-            })
-        });
-        let mut entries = SmallVec::<[Entry; 1024]>::new();
-        match unsafe {
-            self.driver
-                .borrow_mut()
-                .poll(timeout, &mut ops, &mut entries)
-        } {
-            Ok(_) => {
-                for entry in entries {
-                    self.op_runtime
-                        .borrow_mut()
-                        .update_result(Key::new_dummy(entry.user_data()), entry.into_result());
-                }
+        let mut unqueued_cancels = self.unqueued_cancels.borrow_mut();
+        let mut driver = self.driver.borrow_mut();
+        while let Some(user_data) = unqueued_cancels.pop_front() {
+            if let Err(_) = driver.try_cancel(user_data) {
+                unqueued_cancels.push_front(user_data);
+                break;
             }
-            Err(e) => match e.kind() {
-                io::ErrorKind::TimedOut | io::ErrorKind::Interrupted => {}
-                _ => panic!("{:?}", e),
-            },
+        }
+
+        let mut unqueued_operations = self.unqueued_operations.borrow_mut();
+        driver.push_queue(&mut unqueued_operations);
+
+        let timeout = if unqueued_operations.len() > 0 {
+            // busy loop to push outstanding work
+            Some(Duration::ZERO)
+        }
+        else {
+            #[cfg(not(feature = "time"))]
+            let timeout = None;
+            #[cfg(feature = "time")]
+            let timeout = self.timer_runtime.borrow().min_timeout();
+
+            timeout
+        };
+        let mut runtime_ref = self.op_runtime.borrow_mut();
+        let completer = runtime_ref.completer();
+
+        if let Err(e) = unsafe {
+            driver.submit_and_wait_completed(timeout, completer)
+        } {
+            if e.kind() == io::ErrorKind::TimedOut {
+                println!("Timeout: {}", e);
+            }
+            else {
+                panic!("{:?}", e);
+            }
         }
         #[cfg(feature = "time")]
         self.timer_runtime.borrow_mut().wake();

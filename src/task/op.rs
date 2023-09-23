@@ -1,50 +1,28 @@
 use std::{
     future::Future,
     io,
-    marker::PhantomData,
-    mem::ManuallyDrop,
     pin::Pin,
-    ptr::NonNull,
+    marker::PhantomData,
     task::{Context, Poll, Waker},
 };
 
 use slab::Slab;
 
-use crate::{driver::OpCode, key::Key};
+use crate::{driver::{OpCode, Entry}, key::Key};
 
-pub struct RawOp(NonNull<dyn OpCode>);
+// pub(super) trait OpCode: OpCode + Any + 'static {}
 
-impl RawOp {
-    pub fn new(op: impl OpCode + 'static) -> Self {
-        let op = Box::new(op);
-        Self(unsafe { NonNull::new_unchecked(Box::into_raw(op as Box<dyn OpCode>)) })
-    }
+// impl<T: OpCode + 'static> Any for T {}
 
-    pub fn as_dyn_mut(&mut self) -> &mut dyn OpCode {
-        unsafe { self.0.as_mut() }
-    }
-
-    pub unsafe fn into_inner<T: OpCode>(self) -> T {
-        let this = ManuallyDrop::new(self);
-        *Box::from_raw(this.0.cast().as_ptr())
-    }
-}
-
-impl Drop for RawOp {
-    fn drop(&mut self) {
-        drop(unsafe { Box::from_raw(self.0.as_ptr()) })
-    }
-}
-
-pub struct RegisteredOp {
-    pub op: Option<RawOp>,
+pub(super) struct RegisteredOp {
+    pub op: Option<&'static mut dyn OpCode>,
     pub waker: Option<Waker>,
     pub result: Option<io::Result<usize>>,
     pub cancelled: bool,
 }
 
 impl RegisteredOp {
-    fn new(op: Option<RawOp>) -> Self {
+    fn new(op: Option<&'static mut dyn OpCode>) -> Self {
         Self {
             op,
             waker: None,
@@ -55,23 +33,21 @@ impl RegisteredOp {
 }
 
 #[derive(Default)]
-pub(crate) struct OpRuntime {
+pub(super) struct OpRuntime {
     ops: Slab<RegisteredOp>,
 }
 
 impl OpRuntime {
-    pub fn insert<T: OpCode + 'static>(&mut self, op: T) -> Key<T> {
-        let user_data = self.ops.insert(RegisteredOp::new(Some(RawOp::new(op))));
-        // Safety: `user_data` corresponds to `op` inserted which has type `T`.
-        unsafe { Key::new(user_data) }
+    pub fn insert<T: OpCode + 'static>(&mut self, op: T) -> (Key<T>, &'static mut dyn OpCode) {
+        let op: &'static mut dyn OpCode = Box::leak(Box::new(op));
+        let op_ptr = op as *mut dyn OpCode;
+        let user_data = self.ops.insert(RegisteredOp::new(Some(op)));
+        // SAFETY: we leaked box and remove the allocation only during remove
+        unsafe { (Key::new(user_data), &mut *op_ptr ) }
     }
 
     pub fn insert_dummy(&mut self) -> Key<()> {
         Key::new_dummy(self.ops.insert(RegisteredOp::new(None)))
-    }
-
-    pub fn get_raw_op(&mut self, key: usize) -> &mut RawOp {
-        self.ops.get_mut(key).unwrap().op.as_mut().unwrap()
     }
 
     pub fn update_waker<T>(&mut self, key: Key<T>, waker: Waker) {
@@ -105,8 +81,28 @@ impl OpRuntime {
         }
     }
 
-    pub fn remove<T>(&mut self, key: Key<T>) -> RegisteredOp {
-        self.ops.remove(*key)
+    pub fn remove<T>(&mut self, key: Key<T>) -> (Option<io::Result<usize>>, Option<T>) {
+        let registered_op = self.ops.remove(*key);
+        let maybe_op = registered_op.op.map(|op| {
+            let mut_ptr = op as *mut dyn OpCode;
+            let ptr = mut_ptr.cast::<T>();
+            // moves from the previous data allocation and frees it
+            let operation: T = *unsafe { Box::from_raw(ptr) };
+            operation
+        });
+        (registered_op.result, maybe_op)
+    }
+
+    pub fn completer(&mut self) -> &mut Self {
+        self
+    }
+}
+
+impl Extend<Entry> for OpRuntime {
+    fn extend<T>(&mut self, iter: T) where T: IntoIterator<Item=Entry> {
+        for entry in iter.into_iter() {
+            self.update_result(Key::new_dummy(entry.user_data()), entry.into_result());
+        }
     }
 }
 
@@ -127,7 +123,7 @@ impl<T> OpFuture<T> {
     }
 }
 
-impl<T: OpCode> Future for OpFuture<T> {
+impl<T: OpCode + 'static> Future for OpFuture<T> {
     type Output = (io::Result<usize>, T);
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

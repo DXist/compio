@@ -44,6 +44,7 @@ While you can also control the low-level driver manually:
 
 ```rust,no_run
 use arrayvec::ArrayVec;
+use std::collections::VecDeque;
 use compio::{
     buf::IntoInner,
     driver::{AsRawFd, Driver, Entry, Poller},
@@ -58,13 +59,14 @@ driver.attach(file.as_raw_fd()).unwrap();
 
 // Create operation and push it to the driver.
 let mut op = ReadAt::new(file.as_raw_fd(), 0, Vec::with_capacity(4096));
-let ops = [(&mut op, 0).into()];
+let mut ops = VecDeque::from([(&mut op, 0).into()]);
+driver.push_queue(&mut ops);
 
 // Poll the driver and wait for IO completed.
 let mut entries = ArrayVec::<Entry, 1>::new();
 unsafe {
     driver
-        .poll(None, &mut ops.into_iter(), &mut entries)
+        .submit_and_wait_completed(None, &mut entries)
         .unwrap();
 }
 let entry = entries.drain(..).next().unwrap();
