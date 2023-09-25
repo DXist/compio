@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 
 use arrayvec::ArrayVec;
 use compio::{
-    driver::{AsRawFd, Driver, Entry, Poller},
+    driver::{AsRawFd, Driver, Entry, CompleteIo},
     fs::File,
     op::ReadAt,
 };

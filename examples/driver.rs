@@ -2,7 +2,7 @@ use arrayvec::ArrayVec;
 use std::collections::VecDeque;
 use compio::{
     buf::IntoInner,
-    driver::{AsRawFd, Driver, Entry, Poller},
+    driver::{AsRawFd, Driver, Entry, CompleteIo},
 };
 
 fn main() {

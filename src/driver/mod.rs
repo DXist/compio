@@ -38,7 +38,7 @@ cfg_if::cfg_if! {
 /// use arrayvec::ArrayVec;
 /// use compio::{
 ///     buf::{BufWrapper, BufWrapperMut, IntoInner},
-///     driver::{AsRawFd, Driver, Entry, Poller},
+///     driver::{AsRawFd, Driver, Entry, CompleteIo},
 ///     net::UdpSocket,
 ///     op,
 /// };
@@ -100,7 +100,7 @@ cfg_if::cfg_if! {
 /// unsafe { buf.set_len(n_bytes) };
 /// assert_eq!(buf, b"hello world");
 /// ```
-pub trait Poller<'arena> {
+pub trait CompleteIo<'arena> {
     /// Attach an fd to the driver.
     ///
     /// ## Platform specific
@@ -149,7 +149,7 @@ pub trait Poller<'arena> {
     ///
     /// # Safety
     ///
-    /// * Operations should be alive until [`Poller::poll`] returns its result.
+    /// * Operations should be alive until [`CompleteIo::poll`] returns its result.
     /// * User defined data should be unique.
     unsafe fn submit_and_wait_completed(
         &mut self,

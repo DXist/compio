@@ -30,7 +30,7 @@ use windows_sys::Win32::{
 };
 
 use crate::{
-    driver::{Entry, Operation, Poller, OpObject},
+    driver::{Entry, Operation, CompleteIo, OpObject},
     vec_deque_alloc,
     syscall,
 };
@@ -241,7 +241,7 @@ fn ntstatus_from_win32(x: i32) -> NTSTATUS {
     }
 }
 
-impl<'arena> Poller<'arena> for Driver<'arena> {
+impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     #[inline]
     fn attach(&mut self, fd: RawFd) -> io::Result<()> {
         syscall!(

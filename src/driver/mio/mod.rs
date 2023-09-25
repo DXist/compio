@@ -17,7 +17,7 @@ use mio::{
     Events, Interest, Poll, Token, Registry,
 };
 
-use crate::driver::{Entry, OpObject, Poller, Operation};
+use crate::driver::{Entry, OpObject, CompleteIo, Operation};
 
 pub(crate) mod op;
 
@@ -120,7 +120,7 @@ impl<'arena> Driver<'arena> {
     }
 }
 
-impl<'arena> Poller<'arena> for Driver<'arena> {
+impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     #[inline]
     fn attach(&mut self, _fd: RawFd) -> io::Result<()> {
         Ok(())

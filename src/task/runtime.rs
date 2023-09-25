@@ -12,7 +12,7 @@ use async_task::{Runnable, Task};
 #[cfg(feature = "time")]
 use crate::task::time::{TimerFuture, TimerRuntime};
 use crate::{
-    driver::{AsRawFd, Driver, OpObject, OpCode, Poller, RawFd},
+    driver::{AsRawFd, Driver, OpObject, OpCode, CompleteIo, RawFd},
     task::op::{OpFuture, OpRuntime},
     Key,
 };

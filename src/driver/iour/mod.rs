@@ -17,7 +17,7 @@ use io_uring::{
 };
 pub(crate) use libc::{sockaddr_storage, socklen_t};
 
-use crate::{driver::{Entry, Operation, Poller, OpObject}, vec_deque_alloc};
+use crate::{driver::{Entry, Operation, CompleteIo, OpObject}, vec_deque_alloc};
 
 pub(crate) mod op;
 
@@ -99,7 +99,7 @@ impl<'arena> Driver<'arena> {
     }
 }
 
-impl<'arena> Poller<'arena> for Driver<'arena> {
+impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     #[inline]
     fn attach(&mut self, _fd: RawFd) -> io::Result<()> {
         Ok(())
