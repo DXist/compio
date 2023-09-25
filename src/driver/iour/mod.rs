@@ -2,11 +2,7 @@
 use std::alloc::Allocator;
 #[doc(no_inline)]
 pub use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
-use std::{
-    io,
-    marker::PhantomData,
-    time::Duration,
-};
+use std::{io, marker::PhantomData, time::Duration};
 
 use io_uring::{
     cqueue,
@@ -17,7 +13,10 @@ use io_uring::{
 };
 pub(crate) use libc::{sockaddr_storage, socklen_t};
 
-use crate::{driver::{Entry, Operation, CompleteIo, OpObject}, vec_deque_alloc};
+use crate::{
+    driver::{CompleteIo, Entry, OpObject, Operation},
+    vec_deque_alloc,
+};
 
 pub(crate) mod op;
 
@@ -107,12 +106,17 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
 
     #[inline]
     fn try_cancel(&mut self, user_data: usize) -> Result<(), ()> {
-        let squeue_entry = AsyncCancel::new(user_data as u64).build().user_data(user_data as u64);
+        let squeue_entry = AsyncCancel::new(user_data as u64)
+            .build()
+            .user_data(user_data as u64);
         unsafe { self.inner.submission().push(&squeue_entry) }.map_err(|_| ())
     }
 
     #[inline]
-    fn try_push<O: OpCode>(&mut self, mut op: Operation<'arena, O>) -> Result<(), Operation<'arena, O>> {
+    fn try_push<O: OpCode>(
+        &mut self,
+        mut op: Operation<'arena, O>,
+    ) -> Result<(), Operation<'arena, O>> {
         let user_data = op.user_data();
         let squeue_entry = op.opcode().create_entry().user_data(user_data as _);
         unsafe { self.inner.submission().push(&squeue_entry) }.map_err(|_| op)
@@ -126,9 +130,14 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     }
 
     #[inline]
-    fn push_queue<#[cfg(feature = "allocator_api")] A: Allocator + Unpin + 'arena>(&mut self, ops_queue: &mut vec_deque_alloc!(OpObject<'arena>, A)) {
+    fn push_queue<#[cfg(feature = "allocator_api")] A: Allocator + Unpin + 'arena>(
+        &mut self,
+        ops_queue: &mut vec_deque_alloc!(OpObject<'arena>, A),
+    ) {
         let to_drain = self.capacity_left().min(ops_queue.len());
-        if to_drain == 0 { return };
+        if to_drain == 0 {
+            return;
+        };
 
         let mut squeue = self.inner.submission();
         let drain_iter = ops_queue.drain(..to_drain).map(|mut op| {
@@ -137,7 +146,11 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         });
         self.squeue_buffer.clear();
         self.squeue_buffer.extend(drain_iter);
-        unsafe { squeue.push_multiple(&self.squeue_buffer).expect("in capacity") };
+        unsafe {
+            squeue
+                .push_multiple(&self.squeue_buffer)
+                .expect("in capacity")
+        };
     }
 
     #[inline]
@@ -154,7 +167,8 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         // Anyway we need to submit once, no matter there are entries in squeue.
         self.inner.submission().sync();
         self.submit(timeout)?;
-        // if new submission entries are pushed during completion, runtime has to submit and wait again
+        // if new submission entries are pushed during completion, runtime has to submit
+        // and wait again
         self.complete_entries(completed);
         Ok(())
     }

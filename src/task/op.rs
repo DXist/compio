@@ -1,14 +1,17 @@
 use std::{
     future::Future,
     io,
-    pin::Pin,
     marker::PhantomData,
+    pin::Pin,
     task::{Context, Poll, Waker},
 };
 
 use slab::Slab;
 
-use crate::{driver::{OpCode, Entry}, key::Key};
+use crate::{
+    driver::{Entry, OpCode},
+    key::Key,
+};
 
 // pub(super) trait OpCode: OpCode + Any + 'static {}
 
@@ -43,7 +46,7 @@ impl OpRuntime {
         let op_ptr = op as *mut dyn OpCode;
         let user_data = self.ops.insert(RegisteredOp::new(Some(op)));
         // SAFETY: we leaked box and remove the allocation only during remove
-        unsafe { (Key::new(user_data), &mut *op_ptr ) }
+        unsafe { (Key::new(user_data), &mut *op_ptr) }
     }
 
     pub fn insert_dummy(&mut self) -> Key<()> {
@@ -99,7 +102,10 @@ impl OpRuntime {
 }
 
 impl Extend<Entry> for OpRuntime {
-    fn extend<T>(&mut self, iter: T) where T: IntoIterator<Item=Entry> {
+    fn extend<T>(&mut self, iter: T)
+    where
+        T: IntoIterator<Item = Entry>,
+    {
         for entry in iter.into_iter() {
             self.update_result(Key::new_dummy(entry.user_data()), entry.into_result());
         }

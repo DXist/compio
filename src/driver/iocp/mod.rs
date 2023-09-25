@@ -4,11 +4,9 @@ use std::{
     collections::HashSet,
     io,
     marker::PhantomData,
-    os::windows::{
-        prelude::{
-            AsRawHandle, AsRawSocket, FromRawHandle, FromRawSocket, IntoRawHandle, IntoRawSocket,
-            OwnedHandle, RawHandle,
-        },
+    os::windows::prelude::{
+        AsRawHandle, AsRawSocket, FromRawHandle, FromRawSocket, IntoRawHandle, IntoRawSocket,
+        OwnedHandle, RawHandle,
     },
     task::Poll,
     time::Duration,
@@ -30,9 +28,8 @@ use windows_sys::Win32::{
 };
 
 use crate::{
-    driver::{Entry, Operation, CompleteIo, OpObject},
-    vec_deque_alloc,
-    syscall,
+    driver::{CompleteIo, Entry, OpObject, Operation},
+    syscall, vec_deque_alloc,
 };
 
 pub(crate) mod op;
@@ -129,7 +126,6 @@ pub struct Driver<'arena> {
 }
 
 impl<'arena> Driver<'arena> {
-
     /// Create a new IOCP.
     pub fn new() -> io::Result<Self> {
         Self::with_entries(DEFAULT_CAPACITY as _)
@@ -149,10 +145,7 @@ impl<'arena> Driver<'arena> {
     }
 
     #[inline]
-    fn poll_impl(
-        &mut self,
-        timeout: Option<Duration>,
-    ) -> io::Result<()> {
+    fn poll_impl(&mut self, timeout: Option<Duration>) -> io::Result<()> {
         let mut recv_count = 0;
         let timeout = match timeout {
             Some(timeout) => timeout.as_millis() as u32,
@@ -258,12 +251,14 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     }
 
     #[inline]
-    fn try_push<O: OpCode>(&mut self, op: Operation<'arena, O>) -> Result<(), Operation<'arena, O>> {
+    fn try_push<O: OpCode>(
+        &mut self,
+        op: Operation<'arena, O>,
+    ) -> Result<(), Operation<'arena, O>> {
         if self.capacity_left() > 0 {
             self.squeue.push(OpObject::from(op));
             Ok(())
-        }
-        else {
+        } else {
             Err(op)
         }
     }
@@ -273,14 +268,16 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         if self.capacity_left() > 0 {
             self.squeue.push(op);
             Ok(())
-        }
-        else {
+        } else {
             Err(op)
         }
     }
 
     #[inline]
-    fn push_queue<#[cfg(feature = "allocator_api")] A: Allocator + Unpin + 'arena>(&mut self, ops_queue: &mut vec_deque_alloc!(OpObject<'arena>, A)) {
+    fn push_queue<#[cfg(feature = "allocator_api")] A: Allocator + Unpin + 'arena>(
+        &mut self,
+        ops_queue: &mut vec_deque_alloc!(OpObject<'arena>, A),
+    ) {
         let till = self.capacity_left().min(ops_queue.len());
         self.squeue.extend(ops_queue.drain(..till));
     }
@@ -311,17 +308,23 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         self.poll_impl(timeout)?;
         {
             let cancelled = &mut self.cancelled;
-            entries.extend(self.iocp_entries.drain(..).filter_map(|e| Self::create_entry(cancelled, e)));
+            entries.extend(
+                self.iocp_entries
+                    .drain(..)
+                    .filter_map(|e| Self::create_entry(cancelled, e)),
+            );
         }
 
         // See if there are remaining entries.
         loop {
             match self.poll_impl(Some(Duration::ZERO)) {
                 Ok(()) => {
-                    {
-                        let cancelled = &mut self.cancelled;
-                        entries.extend(self.iocp_entries.drain(..).filter_map(|e| Self::create_entry(cancelled, e)));
-                    }
+                    let cancelled = &mut self.cancelled;
+                    entries.extend(
+                        self.iocp_entries
+                            .drain(..)
+                            .filter_map(|e| Self::create_entry(cancelled, e)),
+                    );
                 }
                 Err(e) => match e.kind() {
                     io::ErrorKind::TimedOut => break,

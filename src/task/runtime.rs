@@ -3,8 +3,8 @@ use std::{
     collections::VecDeque,
     future::Future,
     io,
-    time::Duration,
     task::{Context, Poll},
+    time::Duration,
 };
 
 use async_task::{Runnable, Task};
@@ -12,7 +12,7 @@ use async_task::{Runnable, Task};
 #[cfg(feature = "time")]
 use crate::task::time::{TimerFuture, TimerRuntime};
 use crate::{
-    driver::{AsRawFd, Driver, OpObject, OpCode, CompleteIo, RawFd},
+    driver::{AsRawFd, CompleteIo, Driver, OpCode, OpObject, RawFd},
     task::op::{OpFuture, OpRuntime},
     Key,
 };
@@ -113,8 +113,7 @@ impl Runtime {
     pub fn cancel_op<T>(&self, user_data: Key<T>) {
         if let Err(_) = self.driver.borrow_mut().try_cancel(*user_data) {
             _ = self.unqueued_cancels.borrow_mut().push_back(*user_data)
-        }
-        else {
+        } else {
             self.op_runtime.borrow_mut().cancel(user_data);
         }
     }
@@ -134,12 +133,7 @@ impl Runtime {
             let (maybe_result, maybe_op) = op_runtime.remove(user_data);
             let result = maybe_result.unwrap();
             let operation = maybe_op.expect("`poll_task` is not called on dummy Op");
-            Poll::Ready(
-                (
-                    result,
-                    operation
-                )
-            )
+            Poll::Ready((result, operation))
         } else {
             op_runtime.update_waker(user_data, cx.waker().clone());
             Poll::Pending
@@ -185,8 +179,7 @@ impl Runtime {
         let timeout = if unqueued_operations.len() > 0 {
             // busy loop to push outstanding work
             Some(Duration::ZERO)
-        }
-        else {
+        } else {
             #[cfg(not(feature = "time"))]
             let timeout = None;
             #[cfg(feature = "time")]
@@ -197,13 +190,10 @@ impl Runtime {
         let mut runtime_ref = self.op_runtime.borrow_mut();
         let completer = runtime_ref.completer();
 
-        if let Err(e) = unsafe {
-            driver.submit_and_wait_completed(timeout, completer)
-        } {
+        if let Err(e) = unsafe { driver.submit_and_wait_completed(timeout, completer) } {
             if e.kind() == io::ErrorKind::TimedOut {
                 println!("Timeout: {}", e);
-            }
-            else {
+            } else {
                 panic!("{:?}", e);
             }
         }

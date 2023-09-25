@@ -4,6 +4,7 @@
 #[cfg(feature = "allocator_api")]
 use std::alloc::Allocator;
 use std::{io, time::Duration};
+
 use crate::vec_deque_alloc;
 
 #[cfg(unix)]
@@ -32,13 +33,12 @@ cfg_if::cfg_if! {
 /// # Examples
 ///
 /// ```
-/// use std::net::SocketAddr;
-/// use std::collections::VecDeque;
+/// use std::{collections::VecDeque, net::SocketAddr};
 ///
 /// use arrayvec::ArrayVec;
 /// use compio::{
 ///     buf::{BufWrapper, BufWrapperMut, IntoInner},
-///     driver::{AsRawFd, Driver, Entry, CompleteIo},
+///     driver::{AsRawFd, CompleteIo, Driver, Entry},
 ///     net::UdpSocket,
 ///     op,
 /// };
@@ -113,34 +113,44 @@ pub trait CompleteIo<'arena> {
 
     /// Try to cancel an operation with the pushed user-defined data.
     ///
-    /// If submission queue is full the error is returned. The caller should queue the cancelation request or submit queued entries first.
+    /// If submission queue is full the error is returned. The caller should
+    /// queue the cancelation request or submit queued entries first.
     ///
-    /// If the cancellation is not possible the operation will run till completed.
+    /// If the cancellation is not possible the operation will run till
+    /// completed.
     ///
-    /// When an operation is cancelled or completed successfully `submit_and_wait_completed` will output it in `completed` iterator.
+    /// When an operation is cancelled or completed successfully
+    /// `submit_and_wait_completed` will output it in `completed` iterator.
     fn try_cancel(&mut self, user_data: usize) -> Result<(), ()>;
 
     /// Try to push operation into submission queue
     ///
     /// If the queue is full the submitted operation is returned as an error.
-    /// Caller could use an external queue like VecDeque<OpObject<'a>> to keep unqueued operations.
-    fn try_push<O: OpCode>(&mut self, op: Operation<'arena, O>) -> Result<(), Operation<'arena, O>>;
+    /// Caller could use an external queue like VecDeque<OpObject<'a>> to keep
+    /// unqueued operations.
+    fn try_push<O: OpCode>(&mut self, op: Operation<'arena, O>)
+    -> Result<(), Operation<'arena, O>>;
 
     /// Try to push operation object into submission queue
     fn try_push_dyn(&mut self, op: OpObject<'arena>) -> Result<(), OpObject<'arena>>;
 
     /// Push multiple operations into submission queue from an external VecDeque
     ///
-    /// After push the external queue could contain operations that didn't fit into the submission queue
-    fn push_queue<#[cfg(feature = "allocator_api")] A: Allocator + Unpin + 'arena>(&mut self, ops_queue: &mut vec_deque_alloc!(OpObject<'arena>, A));
+    /// After push the external queue could contain operations that didn't fit
+    /// into the submission queue
+    fn push_queue<#[cfg(feature = "allocator_api")] A: Allocator + Unpin + 'arena>(
+        &mut self,
+        ops_queue: &mut vec_deque_alloc!(OpObject<'arena>, A),
+    );
 
     /// Returns submission queue capacity left for pushing.
     fn capacity_left(&self) -> usize;
 
-    /// Submit queued operations and wait for completed entries with an optional timeout.
+    /// Submit queued operations and wait for completed entries with an optional
+    /// timeout.
     ///
-    /// If there are no operations completed and `timeout` > 0  this call will block and wait.
-    /// If no timeout specified, it will block forever.
+    /// If there are no operations completed and `timeout` > 0  this call will
+    /// block and wait. If no timeout specified, it will block forever.
     /// If timeout is `Duration::ZERO` no waiting is performed.
     ///
     /// To interrupt the blocking, see [`Event`].
@@ -149,7 +159,8 @@ pub trait CompleteIo<'arena> {
     ///
     /// # Safety
     ///
-    /// * Operations should be alive until [`CompleteIo::poll`] returns its result.
+    /// * Operations should be alive until [`CompleteIo::poll`] returns its
+    ///   result.
     /// * User defined data should be unique.
     unsafe fn submit_and_wait_completed(
         &mut self,

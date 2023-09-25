@@ -1,9 +1,8 @@
-use std::{io, time::Duration};
-use std::collections::VecDeque;
+use std::{collections::VecDeque, io, time::Duration};
 
 use arrayvec::ArrayVec;
 use compio::{
-    driver::{AsRawFd, Driver, Entry, CompleteIo},
+    driver::{AsRawFd, CompleteIo, Driver, Entry},
     fs::File,
     op::ReadAt,
 };
@@ -22,11 +21,7 @@ fn cancel_before_poll() {
     driver.push_queue(&mut ops);
     let mut entries = ArrayVec::<Entry, 1>::new();
 
-    let res = unsafe {
-        driver.submit_and_wait_completed(
-            Some(Duration::from_secs(1)),
-            &mut entries,
-        )
-    };
+    let res =
+        unsafe { driver.submit_and_wait_completed(Some(Duration::from_secs(1)), &mut entries) };
     assert!(res.is_ok() || res.unwrap_err().kind() == io::ErrorKind::TimedOut);
 }

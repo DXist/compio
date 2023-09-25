@@ -8,16 +8,18 @@ use std::{
     ops::ControlFlow,
     time::Duration,
 };
-use crate::vec_deque_alloc;
 
 pub(crate) use libc::{sockaddr_storage, socklen_t};
 use mio::{
     event::{Event, Source},
     unix::SourceFd,
-    Events, Interest, Poll, Token, Registry,
+    Events, Interest, Poll, Registry, Token,
 };
 
-use crate::driver::{Entry, OpObject, CompleteIo, Operation};
+use crate::{
+    driver::{CompleteIo, Entry, OpObject, Operation},
+    vec_deque_alloc,
+};
 
 pub(crate) mod op;
 
@@ -105,16 +107,21 @@ impl<'arena> Driver<'arena> {
         })
     }
 
-    fn submit(cancelled: &mut HashSet<usize>, waiting: &mut HashMap<usize, WaitEntry<'arena>>, registry: &Registry,
-            op: &'arena mut dyn OpCode, user_data: usize, arg: WaitArg) -> io::Result<()> {
+    fn submit(
+        cancelled: &mut HashSet<usize>,
+        waiting: &mut HashMap<usize, WaitEntry<'arena>>,
+        registry: &Registry,
+        op: &'arena mut dyn OpCode,
+        user_data: usize,
+        arg: WaitArg,
+    ) -> io::Result<()> {
         if !cancelled.remove(&user_data) {
             let token = Token(user_data);
 
             SourceFd(&arg.fd).register(registry, token, arg.interest)?;
 
             // Only insert the entry after it was registered successfully
-            waiting
-                .insert(user_data, WaitEntry::new(op, user_data, arg));
+            waiting.insert(user_data, WaitEntry::new(op, user_data, arg));
         }
         Ok(())
     }
@@ -127,7 +134,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     }
 
     #[inline]
-    fn try_cancel(&mut self, user_data: usize) -> Result<(), ()>{
+    fn try_cancel(&mut self, user_data: usize) -> Result<(), ()> {
         if let Some(entry) = self.waiting.remove(&user_data) {
             self.poll
                 .registry()
@@ -140,12 +147,14 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     }
 
     #[inline]
-    fn try_push<O: OpCode>(&mut self, op: Operation<'arena, O>) -> Result<(), Operation<'arena, O>> {
+    fn try_push<O: OpCode>(
+        &mut self,
+        op: Operation<'arena, O>,
+    ) -> Result<(), Operation<'arena, O>> {
         if self.capacity_left() > 0 {
             self.squeue.push(OpObject::from(op));
             Ok(())
-        }
-        else {
+        } else {
             Err(op)
         }
     }
@@ -155,14 +164,16 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         if self.capacity_left() > 0 {
             self.squeue.push(op);
             Ok(())
-        }
-        else {
+        } else {
             Err(op)
         }
     }
 
     #[inline]
-    fn push_queue<#[cfg(feature = "allocator_api")] A: Allocator + Unpin + 'arena>(&mut self, ops_queue: &mut vec_deque_alloc!(OpObject<'arena>, A)) {
+    fn push_queue<#[cfg(feature = "allocator_api")] A: Allocator + Unpin + 'arena>(
+        &mut self,
+        ops_queue: &mut vec_deque_alloc!(OpObject<'arena>, A),
+    ) {
         let till = self.capacity_left().min(ops_queue.len());
         self.squeue.extend(ops_queue.drain(..till));
     }
@@ -190,11 +201,12 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
                 // io buffers are Unpin so no need to pin
                 match op.pre_submit() {
                     Ok(Decision::Wait(arg)) => {
-                        if let Err(err) = Self::submit(cancelled, waiting, registry, op, user_data, arg) {
+                        if let Err(err) =
+                            Self::submit(cancelled, waiting, registry, op, user_data, arg)
+                        {
                             at_least_one_completion = true;
                             Some(Entry::new(user_data, Err(err)))
-                        }
-                        else {
+                        } else {
                             None
                         }
                     }
@@ -212,19 +224,18 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
 
         entries.extend(submit_squeue_iter);
 
-        if at_least_one_completion { return Ok(()) };
+        if at_least_one_completion {
+            return Ok(());
+        };
 
         // poll only when nothing was completed
 
         loop {
             match self.poll.poll(&mut self.events, timeout) {
                 Ok(_) => break Ok(()),
-                Err(err) if err.kind() == io::ErrorKind::Interrupted => {
-                    continue
-                }
-                Err(err) => break Err(err)
+                Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+                Err(err) => break Err(err),
             };
-
         }?;
 
         let registry = self.poll.registry();
@@ -242,17 +253,16 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
                 (entry.user_data, &entry.arg.fd, maybe_result)
             };
             if let Some(result) = maybe_result {
-                let res = if let Err(err) = registry
-                    .deregister(&mut SourceFd(fd)) {
-                        Err(err)
-                }
-                else {
+                let res = if let Err(err) = registry.deregister(&mut SourceFd(fd)) {
+                    Err(err)
+                } else {
                     result
                 };
                 waiting.remove(&token.0);
                 Some(Entry::new(user_data, res))
+            } else {
+                None
             }
-            else { None }
         });
         entries.extend(completed_iter);
         Ok(())

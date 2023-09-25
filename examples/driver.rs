@@ -1,8 +1,9 @@
-use arrayvec::ArrayVec;
 use std::collections::VecDeque;
+
+use arrayvec::ArrayVec;
 use compio::{
     buf::IntoInner,
-    driver::{AsRawFd, Driver, Entry, CompleteIo},
+    driver::{AsRawFd, CompleteIo, Driver, Entry},
 };
 
 fn main() {

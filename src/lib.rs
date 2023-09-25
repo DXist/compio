@@ -156,7 +156,6 @@ macro_rules! vec_alloc {
 
 pub(crate) use vec_alloc;
 
-
 #[cfg(not(feature = "allocator_api"))]
 macro_rules! vec_deque_alloc {
     ($t:ty, $a:ident) => {
