@@ -106,12 +106,15 @@ impl IntoRawFd for socket2::Socket {
 
 /// Abstraction of IOCP operations.
 pub trait OpCode {
-    /// Perform Windows API call with given pointer to overlapped struct.
+    /// Perform Windows API call.
     ///
     /// # Safety
     ///
     /// `self` attributes must be Unpin to ensure safe operation.
-    unsafe fn operate(&mut self, optr: *mut OVERLAPPED) -> Poll<io::Result<usize>>;
+    unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>>;
+
+    /// Return mut reference on OVERLAPPED structure
+    fn overlapped(&mut self) -> &mut OVERLAPPED;
 }
 
 const DEFAULT_CAPACITY: usize = 1024;
@@ -171,7 +174,7 @@ impl<'arena> Driver<'arena> {
     fn create_entry(cancelled: &mut HashSet<usize>, iocp_entry: OVERLAPPED_ENTRY) -> Option<Entry> {
         let transferred = iocp_entry.dwNumberOfBytesTransferred;
         let overlapped_ptr = iocp_entry.lpOverlapped;
-        let overlapped = unsafe { Box::from_raw(overlapped_ptr.cast::<Overlapped>()) };
+        let overlapped = unsafe { &*overlapped_ptr.cast::<Overlapped>() };
         if cancelled.remove(&overlapped.user_data) {
             return None;
         }
@@ -195,13 +198,13 @@ impl<'arena> Driver<'arena> {
 ///
 /// * The handle should be valid.
 /// * The overlapped_ptr should be non-null.
-unsafe fn post_driver_raw(
+pub(crate) unsafe fn post_driver_raw(
     handle: RawFd,
     result: io::Result<usize>,
-    overlapped_ptr: *mut OVERLAPPED,
+    overlapped: &mut OVERLAPPED,
 ) -> io::Result<()> {
     if let Err(e) = &result {
-        (*overlapped_ptr).Internal = ntstatus_from_win32(e.raw_os_error().unwrap_or_default()) as _;
+        overlapped.Internal = ntstatus_from_win32(e.raw_os_error().unwrap_or_default()) as _;
     }
     syscall!(
         BOOL,
@@ -209,21 +212,10 @@ unsafe fn post_driver_raw(
             handle as _,
             result.unwrap_or_default() as _,
             0,
-            overlapped_ptr,
+            overlapped as *mut _,
         )
     )?;
     Ok(())
-}
-
-#[cfg(feature = "event")]
-pub(crate) fn post_driver(
-    handle: RawFd,
-    user_data: usize,
-    result: io::Result<usize>,
-) -> io::Result<()> {
-    let overlapped = Box::new(Overlapped::new(user_data));
-    let overlapped_ptr = Box::into_raw(overlapped);
-    unsafe { post_driver_raw(handle, result, overlapped_ptr.cast()) }
 }
 
 fn ntstatus_from_win32(x: i32) -> NTSTATUS {
@@ -292,18 +284,21 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         timeout: Option<Duration>,
         entries: &mut impl Extend<Entry>,
     ) -> io::Result<()> {
+        let mut at_least_one_ready = false;
         for mut operation in self.squeue.drain(..) {
-            if !self.cancelled.remove(&operation.user_data()) {
-                let overlapped = Box::new(Overlapped::new(operation.user_data()));
-                let overlapped_ptr = Box::into_raw(overlapped);
+            let user_data = operation.user_data();
+            if !self.cancelled.remove(&user_data) {
                 // we require Unpin buffers - so no need to pin
                 let op = operation.opcode();
-                let result = op.operate(overlapped_ptr.cast());
+                let result = op.operate(user_data);
                 if let Poll::Ready(result) = result {
-                    post_driver_raw(self.port.as_raw_handle(), result, overlapped_ptr.cast())?;
+                    post_driver_raw(self.port.as_raw_handle(), result, op.overlapped())?;
+                    at_least_one_ready = true;
                 }
             }
         }
+
+        let timeout = timeout.map(|t| if at_least_one_ready { Duration::ZERO } else { t });
 
         self.poll_impl(timeout)?;
         {
@@ -313,24 +308,6 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
                     .drain(..)
                     .filter_map(|e| Self::create_entry(cancelled, e)),
             );
-        }
-
-        // See if there are remaining entries.
-        loop {
-            match self.poll_impl(Some(Duration::ZERO)) {
-                Ok(()) => {
-                    let cancelled = &mut self.cancelled;
-                    entries.extend(
-                        self.iocp_entries
-                            .drain(..)
-                            .filter_map(|e| Self::create_entry(cancelled, e)),
-                    );
-                }
-                Err(e) => match e.kind() {
-                    io::ErrorKind::TimedOut => break,
-                    _ => return Err(e),
-                },
-            }
         }
 
         Ok(())

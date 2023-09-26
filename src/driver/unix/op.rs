@@ -1,14 +1,83 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, time::Duration};
 
-use libc::{sockaddr_storage, socklen_t};
+use libc::{sockaddr_storage, socklen_t, timespec};
 use socket2::SockAddr;
 
 #[cfg(doc)]
 use crate::op::*;
 use crate::{
-    buf::{AsIoSlices, AsIoSlicesMut, IntoInner},
+    buf::{AsIoSlices, AsIoSlicesMut, IntoInner, IoBuf, IoBufMut},
     driver::RawFd,
 };
+
+/// Read a file at specified position into specified buffer.
+pub struct ReadAt<'arena, T: IoBufMut<'arena>> {
+    pub(crate) fd: RawFd,
+    pub(crate) offset: usize,
+    pub(crate) buffer: T,
+    _lifetime: PhantomData<&'arena ()>,
+}
+
+impl<'arena, T: IoBufMut<'arena>> ReadAt<'arena, T> {
+    /// Create [`ReadAt`].
+    pub fn new(fd: RawFd, offset: usize, buffer: T) -> Self {
+        Self {
+            fd,
+            offset,
+            buffer,
+            _lifetime: PhantomData,
+        }
+    }
+}
+
+impl<'arena, T: IoBufMut<'arena>> IntoInner for ReadAt<'arena, T> {
+    type Inner = T;
+
+    fn into_inner(self) -> Self::Inner {
+        self.buffer
+    }
+}
+
+/// Write a file at specified position from specified buffer.
+pub struct WriteAt<'arena, T: IoBuf<'arena>> {
+    pub(crate) fd: RawFd,
+    pub(crate) offset: usize,
+    pub(crate) buffer: T,
+    _lifetime: PhantomData<&'arena ()>,
+}
+
+impl<'arena, T: IoBuf<'arena>> WriteAt<'arena, T> {
+    /// Create [`WriteAt`].
+    pub fn new(fd: RawFd, offset: usize, buffer: T) -> Self {
+        Self {
+            fd,
+            offset,
+            buffer,
+            _lifetime: PhantomData,
+        }
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> IntoInner for WriteAt<'arena, T> {
+    type Inner = T;
+
+    fn into_inner(self) -> Self::Inner {
+        self.buffer
+    }
+}
+
+/// Connect to a remote address.
+pub struct Connect {
+    pub(crate) fd: RawFd,
+    pub(crate) addr: SockAddr,
+}
+
+impl Connect {
+    /// Create [`Connect`]. `fd` should be bound.
+    pub fn new(fd: RawFd, addr: SockAddr) -> Self {
+        Self { fd, addr }
+    }
+}
 
 /// Accept a connection.
 pub struct Accept {
@@ -180,5 +249,32 @@ impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendToImpl<'arena, T> {
 
     fn into_inner(self) -> Self::Inner {
         self.buffer
+    }
+}
+
+/// Timeout operation completes after th given relative timeout duration.
+///
+/// If supported by platform timeout operation will take into account the time
+/// spent in low power modes or suspend (CLOCK_BOOTTIME). Otherwise
+/// CLOCK_MONOTONIC is used.
+///
+/// Only io_uring driver supports CLOCK_BOOTTIME.
+#[derive(Debug)]
+pub struct Timeout {
+    pub(crate) duration: timespec,
+}
+
+impl Timeout {
+    /// Create [`Timeout`].
+    pub fn new(duration: Duration) -> Self {
+        let tv_sec = i64::try_from(duration.as_secs()).expect("duration not overflows i64");
+        let tv_nsec = duration.subsec_nanos();
+
+        Self {
+            duration: timespec {
+                tv_sec,
+                tv_nsec: tv_nsec.into(),
+            },
+        }
     }
 }

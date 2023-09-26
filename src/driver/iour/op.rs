@@ -97,3 +97,9 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendToImpl<'arena, T> {
         opcode::SendMsg::new(Fd(fd), msg).build()
     }
 }
+
+impl OpCode for Timeout {
+    fn create_entry(&mut self) -> Entry {
+        opcode::Timeout::new(Fd(self.fd), self.addr.as_ptr(), self.addr.len()).build()
+    }
+}

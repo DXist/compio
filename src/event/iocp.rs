@@ -35,8 +35,8 @@ impl Event {
 
 /// A handle to [`Event`].
 pub struct EventHandle {
-    user_data: usize,
     handle: RawFd,
+    overlapped: Overlapped
 }
 
 // Safety: IOCP handle is thread safe.
@@ -46,14 +46,15 @@ unsafe impl Sync for EventHandle {}
 impl EventHandle {
     pub(crate) fn new(user_data: &Key<()>) -> Self {
         let handle = RUNTIME.with(|runtime| runtime.raw_driver());
+        let overlapped = Overlapped::new(**user_data);
         Self {
-            user_data: **user_data,
             handle,
+            overlapped
         }
     }
 
     /// Notify the event.
-    pub fn notify(&self) -> io::Result<()> {
-        post_driver(self.handle, self.user_data, Ok(0))
+    pub fn notify(&mut self) -> io::Result<()> {
+        unsafe {post_driver_raw(self.handle, Ok(0), &mut self.overlapped) }
     }
 }

@@ -58,7 +58,7 @@ impl EventHandle {
     }
 
     /// Notify the event.
-    pub fn notify(&self) -> io::Result<()> {
+    pub fn notify(&mut self) -> io::Result<()> {
         let data = &[1];
         syscall!(write(self.fd.as_raw_fd(), data.as_ptr() as _, 1))?;
         Ok(())
