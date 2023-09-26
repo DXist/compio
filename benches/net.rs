@@ -3,9 +3,9 @@ use criterion::{async_executor::AsyncExecutor, criterion_group, criterion_main, 
 criterion_group!(net, tcp, udp);
 criterion_main!(net);
 
-struct CompioRuntime;
+struct CompleteIoRuntime;
 
-impl AsyncExecutor for CompioRuntime {
+impl AsyncExecutor for CompleteIoRuntime {
     fn block_on<T>(&self, future: impl std::future::Future<Output = T>) -> T {
         compio::task::block_on(future)
     }
@@ -40,7 +40,7 @@ fn tcp(c: &mut Criterion) {
     });
 
     group.bench_function("compio", |b| {
-        b.to_async(CompioRuntime).iter(|| async {
+        b.to_async(CompleteIoRuntime).iter(|| async {
             let listener = compio::net::TcpListener::bind("127.0.0.1:0").unwrap();
             let addr = listener.local_addr().unwrap();
             let tx = compio::net::TcpStream::connect(addr);
@@ -104,7 +104,7 @@ fn udp(c: &mut Criterion) {
     });
 
     group.bench_function("compio", |b| {
-        b.to_async(CompioRuntime).iter(|| async {
+        b.to_async(CompleteIoRuntime).iter(|| async {
             let rx = compio::net::UdpSocket::bind("127.0.0.1:0").unwrap();
             let addr_rx = rx.local_addr().unwrap();
             let tx = compio::net::UdpSocket::bind("127.0.0.1:0").unwrap();

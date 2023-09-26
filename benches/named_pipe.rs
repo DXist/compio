@@ -3,9 +3,9 @@ use criterion::{async_executor::AsyncExecutor, criterion_group, criterion_main, 
 criterion_group!(named_pipe, basic);
 criterion_main!(named_pipe);
 
-struct CompioRuntime;
+struct CompleteIoRuntime;
 
-impl AsyncExecutor for CompioRuntime {
+impl AsyncExecutor for CompleteIoRuntime {
     fn block_on<T>(&self, future: impl std::future::Future<Output = T>) -> T {
         compio::task::block_on(future)
     }
@@ -51,7 +51,7 @@ fn basic(c: &mut Criterion) {
     });
 
     group.bench_function("compio", |b| {
-        b.to_async(CompioRuntime).iter(|| async {
+        b.to_async(CompleteIoRuntime).iter(|| async {
             #[cfg(target_os = "windows")]
             {
                 use compio::named_pipe::{ClientOptions, ServerOptions};
