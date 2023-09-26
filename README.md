@@ -7,7 +7,7 @@
 A thread-per-core Rust IO drivers and async runtime backed by IOCP/io_uring/mio.
 The name comes from "completion-based IO".
 
-This repository is a fork of [completeio](https://github.com/compio-rs/compio).
+This repository is a fork of [compio](https://github.com/compio-rs/compio).
 
 ## Why not Compio?
 
