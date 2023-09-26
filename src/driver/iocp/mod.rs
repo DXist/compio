@@ -31,6 +31,8 @@ use crate::{
     driver::{CompleteIo, Entry, OpObject, Operation},
     syscall, vec_deque_alloc,
 };
+#[cfg(feature="time")]
+use crate::driver::time::TimerWheel;
 
 pub(crate) mod op;
 
@@ -115,6 +117,12 @@ pub trait OpCode {
 
     /// Return mut reference on OVERLAPPED structure
     fn overlapped(&mut self) -> &mut OVERLAPPED;
+
+    /// Only timers implement this method
+    #[cfg(feature="time")]
+    fn timer_delay(&self) -> Duration {
+        unimplemented!("operation is not a timer")
+    }
 }
 
 const DEFAULT_CAPACITY: usize = 1024;
@@ -125,6 +133,8 @@ pub struct Driver<'arena> {
     squeue: Vec<OpObject<'arena>>,
     iocp_entries: Vec<OVERLAPPED_ENTRY>,
     cancelled: HashSet<usize>,
+    #[cfg(feature="time")]
+    timers: TimerWheel,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -143,6 +153,8 @@ impl<'arena> Driver<'arena> {
             squeue: Vec::with_capacity(entries as usize),
             iocp_entries: Vec::with_capacity(entries as usize),
             cancelled: HashSet::default(),
+            #[cfg(feature="time")]
+            timers: TimerWheel::with_capacity(16),
             _lifetime: PhantomData,
         })
     }
@@ -226,6 +238,9 @@ fn ntstatus_from_win32(x: i32) -> NTSTATUS {
     }
 }
 
+#[cfg(feature="time")]
+const TIMER_PENDING: usize = usize::MAX - 2;
+
 impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     #[inline]
     fn attach(&mut self, fd: RawFd) -> io::Result<()> {
@@ -284,23 +299,32 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         timeout: Option<Duration>,
         entries: &mut impl Extend<Entry>,
     ) -> io::Result<()> {
-        let mut at_least_one_ready = false;
         for mut operation in self.squeue.drain(..) {
             let user_data = operation.user_data();
             if !self.cancelled.remove(&user_data) {
                 // we require Unpin buffers - so no need to pin
                 let op = operation.opcode();
                 let result = op.operate(user_data);
-                if let Poll::Ready(result) = result {
-                    post_driver_raw(self.port.as_raw_handle(), result, op.overlapped())?;
-                    at_least_one_ready = true;
+                match result {
+                    #[cfg(feature="time")]
+                    Poll::Ready(Ok(TIMER_PENDING)) => self.timers.insert(user_data, op.timer_delay()),
+                    Poll::Ready(result) => {
+                        post_driver_raw(self.port.as_raw_handle(), result, op.overlapped())?;
+                    },
+                    _ => {}
                 }
             }
         }
 
-        let timeout = timeout.map(|t| if at_least_one_ready { Duration::ZERO } else { t });
+        #[cfg(feature="time")]
+        let timeout = if let Some(next_timer_delay) = self.timers.duration_till_next_timer() {
+            timeout.map(|t| t.min(next_timer_delay))
+        } else { timeout };
 
         self.poll_impl(timeout)?;
+        #[cfg(feature="time")]
+        self.timers.expire_timers(entries);
+
         {
             let cancelled = &mut self.cancelled;
             entries.extend(

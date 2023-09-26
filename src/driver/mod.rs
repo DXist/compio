@@ -14,6 +14,8 @@ cfg_if::cfg_if! {
     if #[cfg(target_os = "windows")] {
         mod iocp;
         pub use iocp::*;
+        #[cfg(feature="time")]
+        mod time;
     } else if #[cfg(target_os = "linux")] {
         mod iour;
         pub use iour::*;

@@ -1,4 +1,4 @@
-#[cfg(feature = "allocator_api")]
+#[cfg(all(feature = "allocator_api", feature = "runtime"))]
 use std::alloc::Allocator;
 use std::{fs::Metadata, io, path::Path};
 
@@ -11,7 +11,9 @@ use crate::{
     task::RUNTIME,
     Attacher, BufResult,
 };
-use crate::{fs::OpenOptions, impl_raw_fd, vec_alloc};
+use crate::{fs::OpenOptions, impl_raw_fd};
+#[cfg(all(feature = "allocator_api", feature = "runtime"))]
+use crate::vec_alloc;
 
 /// A reference to an open file on the filesystem.
 ///

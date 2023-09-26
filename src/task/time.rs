@@ -8,36 +8,9 @@ use std::{
 
 use slab::Slab;
 
-#[derive(Debug)]
-struct TimerEntry {
-    key: usize,
-    delay: Duration,
-}
-
-impl PartialEq for TimerEntry {
-    fn eq(&self, other: &Self) -> bool {
-        self.delay == other.delay
-    }
-}
-
-impl Eq for TimerEntry {}
-
-impl PartialOrd for TimerEntry {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for TimerEntry {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.delay.cmp(&other.delay)
-    }
-}
-
 pub struct TimerRuntime {
     time: Instant,
     tasks: Slab<Option<Waker>>,
-    wheel: BinaryHeap<TimerEntry>,
 }
 
 impl TimerRuntime {
@@ -53,18 +26,6 @@ impl TimerRuntime {
         self.tasks.contains(key)
     }
 
-    pub fn insert(&mut self, mut delay: Duration) -> Option<usize> {
-        if delay.is_zero() {
-            return None;
-        }
-        let elapsed = self.time.elapsed();
-        let key = self.tasks.insert(None);
-        delay += elapsed;
-        let entry = TimerEntry { key, delay };
-        self.wheel.push(entry);
-        Some(key)
-    }
-
     pub fn update_waker(&mut self, key: usize, waker: Waker) {
         if let Some(w) = self.tasks.get_mut(key) {
             *w = Some(waker);
@@ -73,17 +34,6 @@ impl TimerRuntime {
 
     pub fn cancel(&mut self, key: usize) {
         self.tasks.remove(key);
-    }
-
-    pub fn min_timeout(&self) -> Option<Duration> {
-        let elapsed = self.time.elapsed();
-        self.wheel.peek().map(|entry| {
-            if entry.delay > elapsed {
-                entry.delay - elapsed
-            } else {
-                Duration::ZERO
-            }
-        })
     }
 
     pub fn wake(&mut self) {

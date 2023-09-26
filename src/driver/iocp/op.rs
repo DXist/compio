@@ -31,7 +31,7 @@ use windows_sys::{
 
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IntoInner, IoBuf, IoBufMut},
-    driver::{OpCode, RawFd, iocp::Overlapped},
+    driver::{OpCode, RawFd, iocp::{Overlapped, TIMER_PENDING}},
     syscall,
 };
 
@@ -647,12 +647,21 @@ impl OpCode for ConnectNamedPipe {
 
 #[cfg(feature = "time")]
 pub struct Timeout {
-    pub(crate) delay: Duration,
+    pub(crate) delay: std::time::Duration,
 }
 
 #[cfg(feature = "time")]
 impl OpCode for Timeout {
     unsafe fn operate(&mut self, _user_data: usize) -> Poll<io::Result<usize>> {
-        unimplemented!()
+        Poll::Ready(Ok(TIMER_PENDING))
+    }
+
+    fn overlapped(&mut self) -> &mut OVERLAPPED {
+        unimplemented!("not used for timers")
+    }
+
+    #[cfg(feature="time")]
+    fn timer_delay(&self) -> std::time::Duration {
+        self.delay
     }
 }

@@ -30,10 +30,12 @@ use windows_sys::Win32::{
 
 #[cfg(feature = "runtime")]
 use crate::{buf::*, op::ConnectNamedPipe, task::RUNTIME, *};
+
 use crate::{
     driver::{AsRawFd, FromRawFd, RawFd},
     fs::File,
     impl_raw_fd,
+    syscall
 };
 
 /// A [Windows named pipe] server.
@@ -753,7 +755,7 @@ impl ServerOptions {
     ///
     /// # })
     /// ```
-    /// 
+    ///
     /// [`WRITE_DAC`]: https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createnamedpipea
     pub fn write_dac(&mut self, requested: bool) -> &mut Self {
         self.write_dac = requested;
