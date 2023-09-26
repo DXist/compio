@@ -18,8 +18,6 @@ pub(crate) mod runtime;
 use runtime::Runtime;
 
 pub(crate) mod op;
-#[cfg(feature = "time")]
-pub(crate) mod time;
 
 thread_local! {
     pub(crate) static RUNTIME: Runtime = Runtime::new().expect("cannot create compio runtime");

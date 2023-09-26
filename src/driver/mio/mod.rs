@@ -20,6 +20,8 @@ use crate::{
     driver::{CompleteIo, Entry, OpObject, Operation},
     vec_deque_alloc,
 };
+#[cfg(feature = "time")]
+use crate::driver::time::TimerWheel;
 
 pub(crate) mod op;
 
@@ -32,6 +34,12 @@ pub trait OpCode {
     /// Perform the operation after received corresponding
     /// event.
     fn on_event(self: &mut Self, event: &Event) -> io::Result<ControlFlow<usize>>;
+
+    /// Only timers implement this method
+    #[cfg(feature="time")]
+    fn timer_delay(&self) -> std::time::Duration {
+        unimplemented!("operation is not a timer")
+    }
 }
 
 /// Result of [`OpCode::pre_submit`].
@@ -66,10 +74,15 @@ pub struct WaitArg {
     interest: Interest,
 }
 
+#[cfg(feature="time")]
+const TIMER_PENDING: usize = usize::MAX - 2;
+
 /// Low-level driver of mio.
 pub struct Driver<'arena> {
     squeue: Vec<OpObject<'arena>>,
     events: Events,
+    #[cfg(feature="time")]
+    timers: TimerWheel,
     poll: Poll,
     waiting: HashMap<usize, WaitEntry<'arena>>,
     cancelled: HashSet<usize>,
@@ -101,6 +114,8 @@ impl<'arena> Driver<'arena> {
         Ok(Self {
             squeue: Vec::with_capacity(entries),
             events: Events::with_capacity(entries),
+            #[cfg(feature="time")]
+            timers: TimerWheel::with_capacity(16),
             poll: Poll::new()?,
             waiting: HashMap::new(),
             cancelled: HashSet::new(),
@@ -190,6 +205,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     ) -> io::Result<()> {
         let cancelled = &mut self.cancelled;
         let waiting = &mut self.waiting;
+
         let mut at_least_one_completion = false;
 
         let submit_squeue_iter = {
@@ -209,6 +225,11 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
                         } else {
                             None
                         }
+                    }
+                    #[cfg(feature="time")]
+                    Ok(Decision::Completed(TIMER_PENDING)) => {
+                        self.timers.insert(user_data, op.timer_delay());
+                        None
                     }
                     Ok(Decision::Completed(res)) => {
                         at_least_one_completion = true;
@@ -231,12 +252,18 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         // poll only when nothing was completed
 
         loop {
+            #[cfg(feature="time")]
+            let timeout = self.timers.till_next_timer_or_timeout(timeout);
+
             match self.poll.poll(&mut self.events, timeout) {
                 Ok(_) => break Ok(()),
                 Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
                 Err(err) => break Err(err),
             };
         }?;
+
+        #[cfg(feature="time")]
+        self.timers.expire_timers(entries);
 
         let registry = self.poll.registry();
         let completed_iter = self.events.iter().filter_map(|event| {

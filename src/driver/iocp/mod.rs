@@ -317,9 +317,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         }
 
         #[cfg(feature="time")]
-        let timeout = if let Some(next_timer_delay) = self.timers.duration_till_next_timer() {
-            timeout.map(|t| t.min(next_timer_delay))
-        } else { timeout };
+        let timeout = self.timers.till_next_timer_or_timeout(timeout);
 
         self.poll_impl(timeout)?;
         #[cfg(feature="time")]
@@ -345,7 +343,7 @@ impl AsRawFd for Driver<'_> {
 }
 
 #[repr(C)]
-struct Overlapped {
+pub(crate) struct Overlapped {
     #[allow(dead_code)]
     pub base: OVERLAPPED,
     pub user_data: usize,

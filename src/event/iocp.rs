@@ -1,7 +1,7 @@
 use std::io;
 
 use crate::{
-    driver::{post_driver, RawFd},
+    driver::{RawFd, post_driver_raw, Overlapped},
     key::Key,
     task::{op::OpFuture, RUNTIME},
 };
@@ -55,6 +55,6 @@ impl EventHandle {
 
     /// Notify the event.
     pub fn notify(&mut self) -> io::Result<()> {
-        unsafe {post_driver_raw(self.handle, Ok(0), &mut self.overlapped) }
+        unsafe {post_driver_raw(self.handle, Ok(0), &mut self.overlapped.base) }
     }
 }

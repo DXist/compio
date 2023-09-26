@@ -32,7 +32,7 @@ unsafe extern "system" fn ctrl_event_handler(ctrltype: u32) -> BOOL {
     if let Some(handlers) = handler.get_mut(&ctrltype) {
         if !handlers.is_empty() {
             let handlers = std::mem::replace(handlers, Slab::new());
-            for (_, handler) in handlers {
+            for (_, mut handler) in handlers {
                 handler.notify().ok();
             }
             return 1;

@@ -1,6 +1,6 @@
-use std::{marker::PhantomData, time::Duration};
+use std::marker::PhantomData;
 
-use libc::{sockaddr_storage, socklen_t, timespec};
+use libc::{sockaddr_storage, socklen_t};
 use socket2::SockAddr;
 
 #[cfg(doc)]
@@ -99,6 +99,28 @@ impl Accept {
     /// Get the remote address from the inner buffer.
     pub fn into_addr(self) -> SockAddr {
         unsafe { SockAddr::new(self.buffer, self.addr_len) }
+    }
+}
+
+/// Sync data to the disk.
+pub struct Sync {
+    pub(crate) fd: RawFd,
+    #[allow(dead_code)]
+    pub(crate) datasync: bool,
+}
+
+impl Sync {
+    /// Create [`Sync`].
+    ///
+    /// If `datasync` is `true`, the file metadata may not be synchronized.
+    ///
+    /// ## Platform specific
+    ///
+    /// * IOCP: it is synchronized operation, and calls `FlushFileBuffers`.
+    /// * io-uring: `fdatasync` if `datasync` specified, otherwise `fsync`.
+    /// * mio: it is synchronized `fdatasync` or `fsync`.
+    pub fn new(fd: RawFd, datasync: bool) -> Self {
+        Self { fd, datasync }
     }
 }
 
@@ -249,32 +271,5 @@ impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendToImpl<'arena, T> {
 
     fn into_inner(self) -> Self::Inner {
         self.buffer
-    }
-}
-
-/// Timeout operation completes after th given relative timeout duration.
-///
-/// If supported by platform timeout operation will take into account the time
-/// spent in low power modes or suspend (CLOCK_BOOTTIME). Otherwise
-/// CLOCK_MONOTONIC is used.
-///
-/// Only io_uring driver supports CLOCK_BOOTTIME.
-#[derive(Debug)]
-pub struct Timeout {
-    pub(crate) duration: timespec,
-}
-
-impl Timeout {
-    /// Create [`Timeout`].
-    pub fn new(duration: Duration) -> Self {
-        let tv_sec = i64::try_from(duration.as_secs()).expect("duration not overflows i64");
-        let tv_nsec = duration.subsec_nanos();
-
-        Self {
-            duration: timespec {
-                tv_sec,
-                tv_nsec: tv_nsec.into(),
-            },
-        }
     }
 }

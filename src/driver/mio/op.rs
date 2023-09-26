@@ -6,9 +6,10 @@ pub use crate::driver::unix::op::*;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut},
     driver::{Decision, OpCode},
-    op::*,
     syscall,
 };
+#[cfg(feature = "time")]
+use crate::op::Timeout;
 
 impl<'arena, T: IoBufMut<'arena>> OpCode for ReadAt<'arena, T> {
     fn pre_submit(&mut self) -> io::Result<Decision> {
@@ -205,5 +206,21 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendToImpl<'arena, T> {
         debug_assert!(event.is_writable());
 
         syscall!(break sendmsg(self.fd, &self.msg, 0))
+    }
+}
+
+#[cfg(feature = "time")]
+impl OpCode for Timeout {
+    fn pre_submit(&mut self) -> io::Result<Decision> {
+        Ok(Decision::Completed(super::TIMER_PENDING))
+    }
+
+    fn on_event(&mut self, _event: &Event) -> std::io::Result<ControlFlow<usize>> {
+        unimplemented!("not relevant to timers")
+    }
+
+    #[cfg(feature="time")]
+    fn timer_delay(&self) -> std::time::Duration {
+        self.delay
     }
 }

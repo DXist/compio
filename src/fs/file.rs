@@ -4,6 +4,7 @@ use std::{fs::Metadata, io, path::Path};
 
 #[cfg(feature = "runtime")]
 use crate::{
+    vec_alloc,
     buf::{IntoInner, IoBuf, IoBufMut},
     buf_try,
     driver::AsRawFd,
@@ -12,8 +13,6 @@ use crate::{
     Attacher, BufResult,
 };
 use crate::{fs::OpenOptions, impl_raw_fd};
-#[cfg(all(feature = "allocator_api", feature = "runtime"))]
-use crate::vec_alloc;
 
 /// A reference to an open file on the filesystem.
 ///

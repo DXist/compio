@@ -4,10 +4,12 @@ use std::{
     error::Error,
     fmt::Display,
     future::Future,
-    time::{Duration, Instant},
+    time::Duration,
 };
+use boot_time::Instant;
 
 use futures_util::{select, FutureExt};
+use crate::op::Timeout;
 
 /// Waits until `duration` has elapsed.
 ///
@@ -31,9 +33,10 @@ use futures_util::{select, FutureExt};
 /// })
 /// ```
 pub async fn sleep(duration: Duration) {
-    crate::task::RUNTIME
-        .with(|runtime| runtime.create_timer(duration))
-        .await
+    let (res, _) = crate::task::RUNTIME
+        .with(|runtime| runtime.submit(Timeout::new(duration)))
+        .await;
+    res.expect("timeout always succeeds");
 }
 
 /// Waits until `deadline` is reached.
@@ -45,7 +48,7 @@ pub async fn sleep(duration: Duration) {
 /// Wait 100ms and print "100 ms have elapsed".
 ///
 /// ```
-/// use std::time::{Duration, Instant};
+/// use boot_time::{Duration, Instant};
 ///
 /// use compio::time::sleep_until;
 ///
@@ -211,7 +214,7 @@ pub fn interval(period: Duration) -> Interval {
 /// # Examples
 ///
 /// ```
-/// use std::time::{Duration, Instant};
+/// use boot_time::{Duration, Instant};
 ///
 /// use compio::time::interval_at;
 ///

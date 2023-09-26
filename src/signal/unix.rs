@@ -20,7 +20,7 @@ unsafe extern "C" fn signal_handler(sig: i32) {
         if let Some(fds) = handler.get_mut(&sig) {
             if !fds.is_empty() {
                 let fds = std::mem::take(fds);
-                for (_, fd) in fds {
+                for (_, mut fd) in fds {
                     fd.notify().ok();
                 }
             }

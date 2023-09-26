@@ -9,8 +9,6 @@ use std::{
 
 use async_task::{Runnable, Task};
 
-#[cfg(feature = "time")]
-use crate::task::time::{TimerFuture, TimerRuntime};
 use crate::{
     driver::{AsRawFd, CompleteIo, Driver, OpCode, OpObject, RawFd},
     task::op::{OpFuture, OpRuntime},
@@ -23,8 +21,6 @@ pub(crate) struct Runtime {
     unqueued_operations: RefCell<VecDeque<OpObject<'static>>>,
     unqueued_cancels: RefCell<VecDeque<usize>>,
     op_runtime: RefCell<OpRuntime>,
-    #[cfg(feature = "time")]
-    timer_runtime: RefCell<TimerRuntime>,
 }
 
 impl Runtime {
@@ -35,8 +31,6 @@ impl Runtime {
             unqueued_operations: RefCell::default(),
             unqueued_cancels: RefCell::default(),
             op_runtime: RefCell::default(),
-            #[cfg(feature = "time")]
-            timer_runtime: RefCell::new(TimerRuntime::new()),
         })
     }
 
@@ -69,6 +63,7 @@ impl Runtime {
                 return result;
             }
             self.poll();
+            assert!(self.runnables.borrow_mut().len() > 0);
         }
     }
 
@@ -98,29 +93,12 @@ impl Runtime {
         self.op_runtime.borrow_mut().insert_dummy()
     }
 
-    #[cfg(feature = "time")]
-    pub fn create_timer(&self, delay: std::time::Duration) -> impl Future<Output = ()> {
-        use futures_util::future::Either;
-
-        let mut timer_runtime = self.timer_runtime.borrow_mut();
-        if let Some(key) = timer_runtime.insert(delay) {
-            Either::Left(TimerFuture::new(key))
-        } else {
-            Either::Right(std::future::ready(()))
-        }
-    }
-
     pub fn cancel_op<T>(&self, user_data: Key<T>) {
         if let Err(_) = self.driver.borrow_mut().try_cancel(*user_data) {
             _ = self.unqueued_cancels.borrow_mut().push_back(*user_data)
         } else {
             self.op_runtime.borrow_mut().cancel(user_data);
         }
-    }
-
-    #[cfg(feature = "time")]
-    pub fn cancel_timer(&self, key: usize) {
-        self.timer_runtime.borrow_mut().cancel(key);
     }
 
     pub fn poll_task<T: OpCode + 'static>(
@@ -152,17 +130,6 @@ impl Runtime {
         }
     }
 
-    #[cfg(feature = "time")]
-    pub fn poll_timer(&self, cx: &mut Context, key: usize) -> Poll<()> {
-        let mut timer_runtime = self.timer_runtime.borrow_mut();
-        if timer_runtime.contains(key) {
-            timer_runtime.update_waker(key, cx.waker().clone());
-            Poll::Pending
-        } else {
-            Poll::Ready(())
-        }
-    }
-
     fn poll(&self) {
         let mut unqueued_cancels = self.unqueued_cancels.borrow_mut();
         let mut driver = self.driver.borrow_mut();
@@ -180,12 +147,7 @@ impl Runtime {
             // busy loop to push outstanding work
             Some(Duration::ZERO)
         } else {
-            #[cfg(not(feature = "time"))]
-            let timeout = None;
-            #[cfg(feature = "time")]
-            let timeout = self.timer_runtime.borrow().min_timeout();
-
-            timeout
+            None
         };
         let mut runtime_ref = self.op_runtime.borrow_mut();
         let completer = runtime_ref.completer();
@@ -197,7 +159,5 @@ impl Runtime {
                 panic!("{:?}", e);
             }
         }
-        #[cfg(feature = "time")]
-        self.timer_runtime.borrow_mut().wake();
     }
 }
