@@ -1,27 +1,26 @@
 # CompleteIo
 
-[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Berrysoft/completeio/blob/master/LICENSE)
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/DXist/completeio/blob/master/LICENSE)
 [![crates.io](https://img.shields.io/crates/v/completeio)](https://crates.io/crates/completeio)
 [![docs.rs](https://img.shields.io/badge/docs.rs-completeio-latest)](https://docs.rs/completeio)
-[![Azure DevOps builds](https://strawberry-vs.visualstudio.com/completeio/_apis/build/status/Berrysoft.completeio?branch=master)](https://strawberry-vs.visualstudio.com/completeio/_build)
 
-A thread-per-core Rust runtime with IOCP/io_uring/mio.
+A thread-per-core Rust IO drivers and runtime with IOCP/io_uring/mio.
 The name comes from "completion-based IO".
-This crate is inspired by [monoio](https://github.com/bytedance/monoio/).
+This repository is a fork of [completeio](https://github.com/compio-rs/compio).
 
-## Why not Tokio?
+## Why not Compio?
 
-Tokio is a great generic-propose async runtime.
-However, it is poll-based, and even uses [undocumented APIs](https://notgull.net/device-afd/) on Windows.
-We would like some new high-level APIs to perform IOCP/io_uring.
+The project has different goals:
 
-Unlike `tokio-uring`, this runtime isn't Tokio-based.
-This is mainly because that no public APIs to control IOCP in `mio`,
-and `tokio` won't public APIs to control `mio` before `mio` reaches 1.0.
+* provide low overhead IO drivers that preallocate memory on initialization
+* drivers API accepts non-'static IO buffers
+* bias towards IoUring API to achieve zero-cost abstraction:
 
-## Why not monoio/tokio-uring?
+    * fixed size submission queue for operations
+    * external runtime could submit an external queue of not yet queued operations
+    * timers are exposed as Timeout operation and use CLOCK_BOOTTIME clock source when it's available
 
-They don't support Windows.
+* Async runtime is an example runtime to test implementation of drivers
 
 ## Quick start
 
