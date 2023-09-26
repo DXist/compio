@@ -15,7 +15,7 @@ use crate::buf::*;
 /// Creating a slice
 ///
 /// ```
-/// use compio::buf::IoBuf;
+/// use completeio::buf::IoBuf;
 ///
 /// let buf = b"hello world";
 /// let slice = buf.slice(..5);

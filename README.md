@@ -1,9 +1,9 @@
 # CompleteIo
 
-[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Berrysoft/compio/blob/master/LICENSE)
-[![crates.io](https://img.shields.io/crates/v/compio)](https://crates.io/crates/compio)
-[![docs.rs](https://img.shields.io/badge/docs.rs-compio-latest)](https://docs.rs/compio)
-[![Azure DevOps builds](https://strawberry-vs.visualstudio.com/compio/_apis/build/status/Berrysoft.compio?branch=master)](https://strawberry-vs.visualstudio.com/compio/_build)
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Berrysoft/completeio/blob/master/LICENSE)
+[![crates.io](https://img.shields.io/crates/v/completeio)](https://crates.io/crates/completeio)
+[![docs.rs](https://img.shields.io/badge/docs.rs-completeio-latest)](https://docs.rs/completeio)
+[![Azure DevOps builds](https://strawberry-vs.visualstudio.com/completeio/_apis/build/status/Berrysoft.completeio?branch=master)](https://strawberry-vs.visualstudio.com/completeio/_build)
 
 A thread-per-core Rust runtime with IOCP/io_uring/mio.
 The name comes from "completion-based IO".
@@ -28,7 +28,7 @@ They don't support Windows.
 With `runtime` feature enabled, we can use the high level APIs to perform fs & net IO.
 
 ```rust,no_run
-use compio::{fs::File, task::block_on};
+use completeio::{fs::File, task::block_on};
 
 let buffer = block_on(async {
     let file = File::open("Cargo.toml").unwrap();
@@ -45,7 +45,7 @@ While you can also control the low-level driver manually:
 ```rust,no_run
 use arrayvec::ArrayVec;
 use std::collections::VecDeque;
-use compio::{
+use completeio::{
     buf::IntoInner,
     driver::{AsRawFd, Driver, Entry, CompleteIo},
     fs::File,

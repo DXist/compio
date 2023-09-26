@@ -20,13 +20,13 @@ use crate::{
 /// # Examples
 ///
 /// ```
-/// use compio::net::{UnixListener, UnixStream};
+/// use completeio::net::{UnixListener, UnixStream};
 /// use tempfile::tempdir;
 ///
 /// let dir = tempdir().unwrap();
 /// let sock_file = dir.path().join("unix-server.sock");
 ///
-/// compio::task::block_on(async move {
+/// completeio::task::block_on(async move {
 ///     let listener = UnixListener::bind(&sock_file).unwrap();
 ///
 ///     let tx = UnixStream::connect(&sock_file).unwrap();
@@ -100,9 +100,9 @@ impl_raw_fd!(UnixListener, inner);
 /// # Examples
 ///
 /// ```no_run
-/// use compio::net::UnixStream;
+/// use completeio::net::UnixStream;
 ///
-/// compio::task::block_on(async {
+/// completeio::task::block_on(async {
 ///     // Connect to a peer
 ///     let mut stream = UnixStream::connect("unix-server.sock").unwrap();
 ///

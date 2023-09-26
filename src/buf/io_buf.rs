@@ -20,16 +20,16 @@ use crate::{buf::*, vec_alloc};
 pub unsafe trait IoBuf<'arena>: Unpin + 'arena {
     /// Returns a raw pointer to the vector’s buffer.
     ///
-    /// This method is to be used by the `compio` runtime and it is not
+    /// This method is to be used by the `completeio` runtime and it is not
     /// expected for users to call it directly.
     ///
-    /// The implementation must ensure that, while the `compio` runtime
+    /// The implementation must ensure that, while the `completeio` runtime
     /// owns the value, the pointer returned **does not** change.
     fn as_buf_ptr(&self) -> *const u8;
 
     /// Number of initialized bytes.
     ///
-    /// This method is to be used by the `compio` runtime and it is not
+    /// This method is to be used by the `completeio` runtime and it is not
     /// expected for users to call it directly.
     ///
     /// For [`Vec`], this is identical to `len()`.
@@ -37,7 +37,7 @@ pub unsafe trait IoBuf<'arena>: Unpin + 'arena {
 
     /// Total size of the buffer, including uninitialized memory, if any.
     ///
-    /// This method is to be used by the `compio` runtime and it is not
+    /// This method is to be used by the `completeio` runtime and it is not
     /// expected for users to call it directly.
     ///
     /// For [`Vec`], this is identical to `capacity()`.
@@ -56,7 +56,7 @@ pub unsafe trait IoBuf<'arena>: Unpin + 'arena {
     /// # Examples
     ///
     /// ```
-    /// use compio::buf::IoBuf;
+    /// use completeio::buf::IoBuf;
     ///
     /// let buf = b"hello world";
     /// buf.slice(5..10);
@@ -247,10 +247,10 @@ unsafe impl<const N: usize> IoBuf<'static> for arrayvec::ArrayVec<u8, N> {
 pub unsafe trait IoBufMut<'arena>: IoBuf<'arena> {
     /// Returns a raw mutable pointer to the vector’s buffer.
     ///
-    /// This method is to be used by the `compio` runtime and it is not
+    /// This method is to be used by the `completeio` runtime and it is not
     /// expected for users to call it directly.
     ///
-    /// The implementation must ensure that, while the `compio` runtime
+    /// The implementation must ensure that, while the `completeio` runtime
     /// owns the value, the pointer returned **does not** change.
     fn as_buf_mut_ptr(&mut self) -> *mut u8;
 

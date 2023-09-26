@@ -7,7 +7,7 @@ struct CompleteIoRuntime;
 
 impl AsyncExecutor for CompleteIoRuntime {
     fn block_on<T>(&self, future: impl std::future::Future<Output = T>) -> T {
-        compio::task::block_on(future)
+        completeio::task::block_on(future)
     }
 }
 
@@ -50,13 +50,13 @@ fn basic(c: &mut Criterion) {
         })
     });
 
-    group.bench_function("compio", |b| {
+    group.bench_function("completeio", |b| {
         b.to_async(CompleteIoRuntime).iter(|| async {
             #[cfg(target_os = "windows")]
             {
-                use compio::named_pipe::{ClientOptions, ServerOptions};
+                use completeio::named_pipe::{ClientOptions, ServerOptions};
 
-                const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe";
+                const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe";
 
                 let server = ServerOptions::new().create(PIPE_NAME).unwrap();
                 let client = ClientOptions::new().open(PIPE_NAME).unwrap();

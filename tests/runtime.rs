@@ -2,7 +2,7 @@
 
 use std::net::Ipv4Addr;
 
-use compio::{
+use completeio::{
     buf::*,
     fs::File,
     net::{TcpListener, TcpStream},
@@ -13,7 +13,7 @@ use tempfile::NamedTempFile;
 fn multi_threading() {
     const DATA: &str = "Hello world!";
 
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let addr = listener.local_addr().unwrap();
 
@@ -24,7 +24,7 @@ fn multi_threading() {
 
         let rx = SendWrapper(rx);
         if let Err(e) = std::thread::spawn(move || {
-            compio::task::block_on(async {
+            completeio::task::block_on(async {
                 let buffer = Vec::with_capacity(DATA.len());
                 let (n, buffer) = rx.recv_exact(buffer).await;
                 assert_eq!(n.unwrap(), buffer.len());
@@ -42,7 +42,7 @@ fn multi_threading() {
 fn try_clone() {
     const DATA: &str = "Hello world!";
 
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let addr = listener.local_addr().unwrap();
 
@@ -54,7 +54,7 @@ fn try_clone() {
 
         let rx = SendWrapper(rx.try_clone().unwrap());
         if let Err(e) = std::thread::spawn(move || {
-            compio::task::block_on(async {
+            completeio::task::block_on(async {
                 let buffer = Vec::with_capacity(DATA.len());
                 let (n, buffer) = rx.recv_exact(buffer).await;
                 assert_eq!(n.unwrap(), buffer.len());
@@ -110,7 +110,7 @@ fn drop_on_complete() {
     let mut file = std::fs::File::create(tempfile.path()).unwrap();
     std::io::Write::write_all(&mut file, &vec).unwrap();
 
-    let file = compio::task::block_on(async {
+    let file = completeio::task::block_on(async {
         let file = File::open(tempfile.path()).unwrap();
         file.read_at(
             MyBuf {
@@ -134,7 +134,7 @@ fn drop_on_complete() {
 fn too_many_submissions() {
     let tempfile = tempfile();
 
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         let file = File::create(tempfile.path()).unwrap();
         for _ in 0..600 {
             poll_once(async {
@@ -169,7 +169,7 @@ fn arena() {
         }
     }
 
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         let file = File::open("Cargo.toml").unwrap();
         let (read, buffer) = file.read_to_end_at(Vec::new_in(ArenaAllocator), 0).await;
         let read = read.unwrap();

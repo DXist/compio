@@ -1,9 +1,9 @@
 use std::net::Ipv4Addr;
 
-use compio::net::{TcpListener, TcpStream};
+use completeio::net::{TcpListener, TcpStream};
 
 fn main() {
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let addr = listener.local_addr().unwrap();
 

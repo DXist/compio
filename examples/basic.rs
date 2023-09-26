@@ -1,7 +1,7 @@
-use compio::fs::OpenOptions;
+use completeio::fs::OpenOptions;
 
 fn main() {
-    let buffer = compio::task::block_on(async {
+    let buffer = completeio::task::block_on(async {
         let file = OpenOptions::new().read(true).open("Cargo.toml").unwrap();
         let (read, buffer) = file.read_to_end_at(Vec::with_capacity(4096), 0).await;
         let read = read.unwrap();

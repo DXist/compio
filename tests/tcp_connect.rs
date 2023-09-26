@@ -1,6 +1,6 @@
 use std::net::{IpAddr, SocketAddr};
 
-use compio::net::{TcpListener, TcpStream, ToSockAddrs};
+use completeio::net::{TcpListener, TcpStream, ToSockAddrs};
 
 async fn test_connect_ip_impl(
     target: impl ToSockAddrs,
@@ -12,7 +12,7 @@ async fn test_connect_ip_impl(
 
     let (tx, rx) = futures_channel::oneshot::channel();
 
-    compio::task::spawn(async move {
+    completeio::task::spawn(async move {
         let (socket, addr) = listener.accept().await.unwrap();
         assert_eq!(addr, socket.peer_addr().unwrap());
         assert!(tx.send(socket).is_ok());
@@ -31,7 +31,7 @@ macro_rules! test_connect_ip {
         $(
             #[test]
              fn $ident() {
-                compio::task::block_on(test_connect_ip_impl($target, $addr_f))
+                completeio::task::block_on(test_connect_ip_impl($target, $addr_f))
             }
         )*
     }
@@ -65,7 +65,7 @@ macro_rules! test_connect {
             #[test]
             fn $ident() {
                 #[allow(unused_parens)]
-                compio::task::block_on(test_connect_impl($mapping))
+                completeio::task::block_on(test_connect_impl($mapping))
             }
         )*
     }
@@ -97,7 +97,7 @@ test_connect! {
 
 #[test]
 fn connect_invalid_dst() {
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         assert!(TcpStream::connect("127.0.0.1:1").await.is_err());
     })
 }

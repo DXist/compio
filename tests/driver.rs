@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, io, time::Duration};
 
 use arrayvec::ArrayVec;
-use compio::{
+use completeio::{
     driver::{AsRawFd, CompleteIo, Driver, Entry},
     fs::File,
     op::ReadAt,

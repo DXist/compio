@@ -32,9 +32,9 @@ use crate::{
 /// ```
 /// use std::net::SocketAddr;
 ///
-/// use compio::net::UdpSocket;
+/// use completeio::net::UdpSocket;
 ///
-/// compio::task::block_on(async {
+/// completeio::task::block_on(async {
 ///     let first_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
 ///     let second_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
 ///
@@ -67,10 +67,10 @@ use crate::{
 /// ```
 /// use std::net::SocketAddr;
 ///
-/// use compio::net::UdpSocket;
+/// use completeio::net::UdpSocket;
 /// use socket2::SockAddr;
 ///
-/// compio::task::block_on(async {
+/// completeio::task::block_on(async {
 ///     let first_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
 ///     let second_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
 ///
@@ -139,7 +139,7 @@ impl UdpSocket {
     /// ```no_run
     /// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
     ///
-    /// use compio::net::UdpSocket;
+    /// use completeio::net::UdpSocket;
     /// use socket2::SockAddr;
     ///
     /// let socket = UdpSocket::bind("127.0.0.1:34254").expect("couldn't bind to address");
@@ -165,7 +165,7 @@ impl UdpSocket {
     /// ```
     /// use std::net::SocketAddr;
     ///
-    /// use compio::net::UdpSocket;
+    /// use completeio::net::UdpSocket;
     /// use socket2::SockAddr;
     ///
     /// let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();

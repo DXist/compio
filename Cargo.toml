@@ -1,5 +1,5 @@
 [package]
-name = "compio"
+name = "completeio"
 version = "0.6.0"
 edition = "2021"
 authors = ["Berrysoft <Strawberry_Str@hotmail.com>"]
@@ -8,7 +8,7 @@ license = "MIT"
 description = "completion based async runtime"
 categories = ["asynchronous", "filesystem", "network-programming"]
 keywords = ["async", "fs", "iocp", "io-uring", "net"]
-repository = "https://github.com/Berrysoft/compio"
+repository = "https://github.com/Berrysoft/completeio"
 
 [package.metadata.docs.rs]
 all-features = true

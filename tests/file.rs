@@ -1,6 +1,6 @@
 use std::io::prelude::*;
 
-use compio::fs::File;
+use completeio::fs::File;
 use tempfile::NamedTempFile;
 
 const HELLO: &[u8] = b"hello world...";
@@ -16,7 +16,7 @@ async fn read_hello(file: &File) {
 
 #[test]
 fn basic_read() {
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         let mut tempfile = tempfile();
         tempfile.write_all(HELLO).unwrap();
 
@@ -27,7 +27,7 @@ fn basic_read() {
 
 #[test]
 fn basic_write() {
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         let tempfile = tempfile();
 
         let file = File::create(tempfile.path()).unwrap();
@@ -42,7 +42,7 @@ fn basic_write() {
 
 #[test]
 fn cancel_read() {
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         let mut tempfile = tempfile();
         tempfile.write_all(HELLO).unwrap();
 
@@ -57,7 +57,7 @@ fn cancel_read() {
 
 #[test]
 fn drop_open() {
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         let tempfile = tempfile();
         let _ = File::create(tempfile.path());
 

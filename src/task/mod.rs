@@ -1,9 +1,9 @@
-//! The runtime of compio.
+//! The runtime of completeio.
 //! We don't expose the runtime struct because there could be only one runtime
 //! in each thread.
 //!
 //! ```
-//! let ans = compio::task::block_on(async {
+//! let ans = completeio::task::block_on(async {
 //!     println!("Hello world!");
 //!     42
 //! });
@@ -20,15 +20,15 @@ use runtime::Runtime;
 pub(crate) mod op;
 
 thread_local! {
-    pub(crate) static RUNTIME: Runtime = Runtime::new().expect("cannot create compio runtime");
+    pub(crate) static RUNTIME: Runtime = Runtime::new().expect("cannot create completeio runtime");
 }
 
-/// Start a compio runtime and block on the future till it completes.
+/// Start a completeio runtime and block on the future till it completes.
 ///
 /// ```
-/// compio::task::block_on(async {
+/// completeio::task::block_on(async {
 ///     // Open a file
-///     let file = compio::fs::File::open("Cargo.toml").unwrap();
+///     let file = completeio::fs::File::open("Cargo.toml").unwrap();
 ///
 ///     let buf = Vec::with_capacity(4096);
 ///     // Read some data, the buffer is passed by ownership and
@@ -52,8 +52,8 @@ pub fn block_on<F: Future>(future: F) -> F::Output {
 /// There is no guarantee that a spawned task will execute to completion.
 ///
 /// ```
-/// compio::task::block_on(async {
-///     let task = compio::task::spawn(async {
+/// completeio::task::block_on(async {
+///     let task = completeio::task::spawn(async {
 ///         println!("Hello from a spawned task!");
 ///         42
 ///     });

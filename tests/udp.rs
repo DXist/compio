@@ -1,8 +1,8 @@
-use compio::net::UdpSocket;
+use completeio::net::UdpSocket;
 
 #[test]
 fn connect() {
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         const MSG: &str = "foo bar baz";
 
         let passive = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -24,7 +24,7 @@ fn connect() {
 
 #[test]
 fn send_to() {
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         const MSG: &str = "foo bar baz";
 
         macro_rules! must_success {

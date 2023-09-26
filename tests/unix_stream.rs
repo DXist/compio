@@ -1,12 +1,12 @@
 use std::net::Shutdown;
 
-use compio::net::{UnixListener, UnixStream};
+use completeio::net::{UnixListener, UnixStream};
 
 #[test]
 fn accept_read_write() -> std::io::Result<()> {
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         let dir = tempfile::Builder::new()
-            .prefix("compio-uds-tests")
+            .prefix("completeio-uds-tests")
             .tempdir()
             .unwrap();
         let sock_path = dir.path().join("connect.sock");
@@ -32,9 +32,9 @@ fn accept_read_write() -> std::io::Result<()> {
 
 #[test]
 fn shutdown() -> std::io::Result<()> {
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         let dir = tempfile::Builder::new()
-            .prefix("compio-uds-tests")
+            .prefix("completeio-uds-tests")
             .tempdir()
             .unwrap();
         let sock_path = dir.path().join("connect.sock");

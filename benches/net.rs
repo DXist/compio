@@ -7,7 +7,7 @@ struct CompleteIoRuntime;
 
 impl AsyncExecutor for CompleteIoRuntime {
     fn block_on<T>(&self, future: impl std::future::Future<Output = T>) -> T {
-        compio::task::block_on(future)
+        completeio::task::block_on(future)
     }
 }
 
@@ -39,11 +39,11 @@ fn tcp(c: &mut Criterion) {
         })
     });
 
-    group.bench_function("compio", |b| {
+    group.bench_function("completeio", |b| {
         b.to_async(CompleteIoRuntime).iter(|| async {
-            let listener = compio::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let listener = completeio::net::TcpListener::bind("127.0.0.1:0").unwrap();
             let addr = listener.local_addr().unwrap();
-            let tx = compio::net::TcpStream::connect(addr);
+            let tx = completeio::net::TcpStream::connect(addr);
             let rx = listener.accept();
             let (tx, (rx, _)) = futures_util::try_join!(tx, rx).unwrap();
             tx.send_all(PACKET).await.0.unwrap();
@@ -103,11 +103,11 @@ fn udp(c: &mut Criterion) {
         })
     });
 
-    group.bench_function("compio", |b| {
+    group.bench_function("completeio", |b| {
         b.to_async(CompleteIoRuntime).iter(|| async {
-            let rx = compio::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+            let rx = completeio::net::UdpSocket::bind("127.0.0.1:0").unwrap();
             let addr_rx = rx.local_addr().unwrap();
-            let tx = compio::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+            let tx = completeio::net::UdpSocket::bind("127.0.0.1:0").unwrap();
             let addr_tx = tx.local_addr().unwrap();
 
             rx.connect(addr_tx).unwrap();

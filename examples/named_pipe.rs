@@ -1,11 +1,11 @@
 fn main() {
     #[cfg(target_os = "windows")]
     {
-        use compio::named_pipe::{ClientOptions, ServerOptions};
+        use completeio::named_pipe::{ClientOptions, ServerOptions};
 
-        const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe";
+        const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe";
 
-        compio::task::block_on(async {
+        completeio::task::block_on(async {
             let server = ServerOptions::new()
                 .access_inbound(false)
                 .create(PIPE_NAME)

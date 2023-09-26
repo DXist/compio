@@ -1,10 +1,10 @@
 use std::time::Duration;
 
-use compio::{signal::ctrl_c, time::interval};
+use completeio::{signal::ctrl_c, time::interval};
 use futures_util::{select, FutureExt};
 
 fn main() {
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         let mut interval = interval(Duration::from_secs(2));
         loop {
             let mut ctrlc = ctrl_c();

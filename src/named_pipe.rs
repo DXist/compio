@@ -56,7 +56,7 @@ use crate::{
 /// ```no_run
 /// use std::io;
 ///
-/// use compio::named_pipe::ServerOptions;
+/// use completeio::named_pipe::ServerOptions;
 ///
 /// const PIPE_NAME: &str = r"\\.\pipe\named-pipe-idiomatic-server";
 ///
@@ -72,7 +72,7 @@ use crate::{
 ///     .create(PIPE_NAME)?;
 ///
 /// // Spawn the server loop.
-/// let server = compio::task::block_on(async move {
+/// let server = completeio::task::block_on(async move {
 ///     loop {
 ///         // Wait for a client to connect.
 ///         let connected = server.connect().await?;
@@ -84,7 +84,7 @@ use crate::{
 ///         // `io::ErrorKind::NotFound`.
 ///         server = ServerOptions::new().create(PIPE_NAME)?;
 ///
-///         let client = compio::task::spawn(async move {
+///         let client = completeio::task::spawn(async move {
 ///             // use the connected client
 /// #           Ok::<_, std::io::Error>(())
 ///         });
@@ -122,11 +122,11 @@ impl NamedPipeServer {
     /// with.
     ///
     /// ```no_run
-    /// use compio::named_pipe::{PipeEnd, PipeMode, ServerOptions};
+    /// use completeio::named_pipe::{PipeEnd, PipeMode, ServerOptions};
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-server-info";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-server-info";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let server = ServerOptions::new()
     ///     .pipe_mode(PipeMode::Message)
     ///     .max_instances(5)
@@ -161,11 +161,11 @@ impl NamedPipeServer {
     /// # Example
     ///
     /// ```no_run
-    /// use compio::named_pipe::ServerOptions;
+    /// use completeio::named_pipe::ServerOptions;
     ///
     /// const PIPE_NAME: &str = r"\\.\pipe\mynamedpipe";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let pipe = ServerOptions::new().create(PIPE_NAME)?;
     ///
     /// // Wait for a client to connect.
@@ -186,12 +186,12 @@ impl NamedPipeServer {
     /// process.
     ///
     /// ```
-    /// use compio::named_pipe::{ClientOptions, ServerOptions};
+    /// use completeio::named_pipe::{ClientOptions, ServerOptions};
     /// use windows_sys::Win32::Foundation::ERROR_PIPE_NOT_CONNECTED;
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-disconnect";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-disconnect";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let server = ServerOptions::new().create(PIPE_NAME).unwrap();
     ///
     /// let client = ClientOptions::new().open(PIPE_NAME).unwrap();
@@ -257,12 +257,12 @@ impl_raw_fd!(NamedPipeServer, handle);
 /// ```no_run
 /// use std::time::Duration;
 ///
-/// use compio::{named_pipe::ClientOptions, time};
+/// use completeio::{named_pipe::ClientOptions, time};
 /// use windows_sys::Win32::Foundation::ERROR_PIPE_BUSY;
 ///
 /// const PIPE_NAME: &str = r"\\.\pipe\named-pipe-idiomatic-client";
 ///
-/// # compio::task::block_on(async move {
+/// # completeio::task::block_on(async move {
 /// let client = loop {
 ///     match ClientOptions::new().open(PIPE_NAME) {
 ///         Ok(client) => break client,
@@ -302,11 +302,11 @@ impl NamedPipeClient {
     /// with.
     ///
     /// ```no_run
-    /// use compio::named_pipe::{ClientOptions, PipeEnd, PipeMode};
+    /// use completeio::named_pipe::{ClientOptions, PipeEnd, PipeMode};
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-client-info";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-client-info";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let client = ClientOptions::new().open(PIPE_NAME)?;
     ///
     /// let client_info = client.info()?;
@@ -377,11 +377,11 @@ impl ServerOptions {
     /// Creates a new named pipe builder with the default settings.
     ///
     /// ```
-    /// use compio::named_pipe::ServerOptions;
+    /// use completeio::named_pipe::ServerOptions;
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-new";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-new";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let server = ServerOptions::new().create(PIPE_NAME).unwrap();
     /// # })
     /// ```
@@ -431,11 +431,11 @@ impl ServerOptions {
     /// ```
     /// use std::io;
     ///
-    /// use compio::named_pipe::{ClientOptions, ServerOptions};
+    /// use completeio::named_pipe::{ClientOptions, ServerOptions};
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-access-inbound-err1";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-access-inbound-err1";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let _server = ServerOptions::new()
     ///     .access_inbound(false)
     ///     .create(PIPE_NAME)
@@ -453,11 +453,11 @@ impl ServerOptions {
     /// ```
     /// use std::io;
     ///
-    /// use compio::named_pipe::{ClientOptions, ServerOptions};
+    /// use completeio::named_pipe::{ClientOptions, ServerOptions};
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-access-inbound-err2";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-access-inbound-err2";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let server = ServerOptions::new()
     ///     .access_inbound(false)
     ///     .create(PIPE_NAME)
@@ -480,11 +480,11 @@ impl ServerOptions {
     /// ```
     /// use std::io;
     ///
-    /// use compio::named_pipe::{ClientOptions, ServerOptions};
+    /// use completeio::named_pipe::{ClientOptions, ServerOptions};
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-access-inbound";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-access-inbound";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let server = ServerOptions::new()
     ///     .access_inbound(false)
     ///     .create(PIPE_NAME)
@@ -527,11 +527,11 @@ impl ServerOptions {
     /// ```
     /// use std::io;
     ///
-    /// use compio::named_pipe::{ClientOptions, ServerOptions};
+    /// use completeio::named_pipe::{ClientOptions, ServerOptions};
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-access-outbound-err1";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-access-outbound-err1";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let server = ServerOptions::new()
     ///     .access_outbound(false)
     ///     .create(PIPE_NAME)
@@ -549,11 +549,11 @@ impl ServerOptions {
     /// ```
     /// use std::io;
     ///
-    /// use compio::named_pipe::{ClientOptions, ServerOptions};
+    /// use completeio::named_pipe::{ClientOptions, ServerOptions};
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-access-outbound-err2";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-access-outbound-err2";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let server = ServerOptions::new()
     ///     .access_outbound(false)
     ///     .create(PIPE_NAME)
@@ -575,11 +575,11 @@ impl ServerOptions {
     /// communication.
     ///
     /// ```
-    /// use compio::named_pipe::{ClientOptions, ServerOptions};
+    /// use completeio::named_pipe::{ClientOptions, ServerOptions};
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-access-outbound";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-access-outbound";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let server = ServerOptions::new()
     ///     .access_outbound(false)
     ///     .create(PIPE_NAME)
@@ -630,11 +630,11 @@ impl ServerOptions {
     /// ```
     /// use std::io;
     ///
-    /// use compio::named_pipe::ServerOptions;
+    /// use completeio::named_pipe::ServerOptions;
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-first-instance-error";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-first-instance-error";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let server1 = ServerOptions::new()
     ///     .first_pipe_instance(true)
     ///     .create(PIPE_NAME)
@@ -655,11 +655,11 @@ impl ServerOptions {
     /// ```
     /// use std::io;
     ///
-    /// use compio::named_pipe::ServerOptions;
+    /// use completeio::named_pipe::ServerOptions;
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-first-instance";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-first-instance";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let mut builder = ServerOptions::new();
     /// builder.first_pipe_instance(true);
     ///
@@ -690,7 +690,7 @@ impl ServerOptions {
     /// ```
     /// use std::{io, ptr};
     //
-    /// use compio::{driver::AsRawFd, named_pipe::ServerOptions};
+    /// use completeio::{driver::AsRawFd, named_pipe::ServerOptions};
     /// use windows_sys::{
     ///     Win32::Foundation::ERROR_SUCCESS,
     ///     Win32::Security::DACL_SECURITY_INFORMATION,
@@ -699,7 +699,7 @@ impl ServerOptions {
     ///
     /// const PIPE_NAME: &str = r"\\.\pipe\write_dac_pipe";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let mut pipe_template = ServerOptions::new();
     /// pipe_template.write_dac(true);
     /// let pipe = pipe_template.create(PIPE_NAME).unwrap();
@@ -724,7 +724,7 @@ impl ServerOptions {
     /// ```
     /// use std::{io, ptr};
     //
-    /// use compio::{driver::AsRawFd, named_pipe::ServerOptions};
+    /// use completeio::{driver::AsRawFd, named_pipe::ServerOptions};
     /// use windows_sys::{
     ///     Win32::Foundation::ERROR_ACCESS_DENIED,
     ///     Win32::Security::DACL_SECURITY_INFORMATION,
@@ -733,7 +733,7 @@ impl ServerOptions {
     ///
     /// const PIPE_NAME: &str = r"\\.\pipe\write_dac_pipe_fail";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let mut pipe_template = ServerOptions::new();
     /// pipe_template.write_dac(false);
     /// let pipe = pipe_template.create(PIPE_NAME).unwrap();
@@ -811,12 +811,12 @@ impl ServerOptions {
     /// ```
     /// use std::io;
     ///
-    /// use compio::named_pipe::{ClientOptions, ServerOptions};
+    /// use completeio::named_pipe::{ClientOptions, ServerOptions};
     /// use windows_sys::Win32::Foundation::ERROR_PIPE_BUSY;
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-max-instances";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-max-instances";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let mut server = ServerOptions::new();
     /// server.max_instances(2);
     ///
@@ -842,9 +842,9 @@ impl ServerOptions {
     /// you do not wish to set an instance limit, leave it unspecified.
     ///
     /// ```should_panic
-    /// use compio::named_pipe::ServerOptions;
+    /// use completeio::named_pipe::ServerOptions;
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let builder = ServerOptions::new().max_instances(255);
     /// # })
     /// ```
@@ -884,11 +884,11 @@ impl ServerOptions {
     /// # Examples
     ///
     /// ```
-    /// use compio::named_pipe::ServerOptions;
+    /// use completeio::named_pipe::ServerOptions;
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-create";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-create";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let server = ServerOptions::new().create(PIPE_NAME).unwrap();
     /// # })
     /// ```
@@ -999,11 +999,11 @@ impl ClientOptions {
     /// Creates a new named pipe builder with the default settings.
     ///
     /// ```
-    /// use compio::named_pipe::{ClientOptions, ServerOptions};
+    /// use completeio::named_pipe::{ClientOptions, ServerOptions};
     ///
-    /// const PIPE_NAME: &str = r"\\.\pipe\compio-named-pipe-client-new";
+    /// const PIPE_NAME: &str = r"\\.\pipe\completeio-named-pipe-client-new";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// // Server must be created in order for the client creation to succeed.
     /// let server = ServerOptions::new().create(PIPE_NAME).unwrap();
     /// let client = ClientOptions::new().open(PIPE_NAME).unwrap();
@@ -1104,12 +1104,12 @@ impl ClientOptions {
     /// ```no_run
     /// use std::time::Duration;
     ///
-    /// use compio::{named_pipe::ClientOptions, time};
+    /// use completeio::{named_pipe::ClientOptions, time};
     /// use windows_sys::Win32::Foundation::ERROR_PIPE_BUSY;
     ///
     /// const PIPE_NAME: &str = r"\\.\pipe\mynamedpipe";
     ///
-    /// # compio::task::block_on(async move {
+    /// # completeio::task::block_on(async move {
     /// let client = loop {
     ///     match ClientOptions::new().open(PIPE_NAME) {
     ///         Ok(client) => break client,

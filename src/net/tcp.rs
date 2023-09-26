@@ -22,14 +22,14 @@ use crate::{
 /// ```
 /// use std::net::SocketAddr;
 ///
-/// use compio::net::{TcpListener, TcpStream};
+/// use completeio::net::{TcpListener, TcpStream};
 /// use socket2::SockAddr;
 ///
 /// let addr: SockAddr = "127.0.0.1:2345".parse::<SocketAddr>().unwrap().into();
 ///
 /// let listener = TcpListener::bind(&addr).unwrap();
 ///
-/// compio::task::block_on(async move {
+/// completeio::task::block_on(async move {
 ///     let tx_fut = TcpStream::connect(&addr);
 ///
 ///     let rx_fut = listener.accept();
@@ -94,7 +94,7 @@ impl TcpListener {
     /// ```
     /// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
     ///
-    /// use compio::net::TcpListener;
+    /// use completeio::net::TcpListener;
     /// use socket2::SockAddr;
     ///
     /// let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
@@ -125,9 +125,9 @@ impl_raw_fd!(TcpListener, inner);
 /// ```no_run
 /// use std::net::SocketAddr;
 ///
-/// use compio::net::TcpStream;
+/// use completeio::net::TcpStream;
 ///
-/// compio::task::block_on(async {
+/// completeio::task::block_on(async {
 ///     // Connect to a peer
 ///     let mut stream = TcpStream::connect("127.0.0.1:8080").await.unwrap();
 ///

@@ -1,8 +1,8 @@
-use compio::net::{UnixListener, UnixStream};
+use completeio::net::{UnixListener, UnixStream};
 use tempfile::tempdir;
 
 fn main() {
-    compio::task::block_on(async {
+    completeio::task::block_on(async {
         let dir = tempdir().unwrap();
         let path = dir.path().join("unix-example.sock");
         let listener = UnixListener::bind(&path).unwrap();

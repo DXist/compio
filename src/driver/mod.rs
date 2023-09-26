@@ -40,7 +40,7 @@ cfg_if::cfg_if! {
 /// use std::{collections::VecDeque, net::SocketAddr};
 ///
 /// use arrayvec::ArrayVec;
-/// use compio::{
+/// use completeio::{
 ///     buf::{BufWrapper, BufWrapperMut, IntoInner},
 ///     driver::{AsRawFd, CompleteIo, Driver, Entry},
 ///     net::UdpSocket,
