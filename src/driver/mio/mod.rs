@@ -16,12 +16,12 @@ use mio::{
     Events, Interest, Poll, Registry, Token,
 };
 
+#[cfg(feature = "time")]
+use crate::driver::time::TimerWheel;
 use crate::{
     driver::{CompleteIo, Entry, OpObject, Operation},
     vec_deque_alloc,
 };
-#[cfg(feature = "time")]
-use crate::driver::time::TimerWheel;
 
 pub(crate) mod op;
 
@@ -36,7 +36,7 @@ pub trait OpCode {
     fn on_event(self: &mut Self, event: &Event) -> io::Result<ControlFlow<usize>>;
 
     /// Only timers implement this method
-    #[cfg(feature="time")]
+    #[cfg(feature = "time")]
     fn timer_delay(&self) -> std::time::Duration {
         unimplemented!("operation is not a timer")
     }
@@ -74,14 +74,14 @@ pub struct WaitArg {
     interest: Interest,
 }
 
-#[cfg(feature="time")]
+#[cfg(feature = "time")]
 const TIMER_PENDING: usize = usize::MAX - 2;
 
 /// Low-level driver of mio.
 pub struct Driver<'arena> {
     squeue: Vec<OpObject<'arena>>,
     events: Events,
-    #[cfg(feature="time")]
+    #[cfg(feature = "time")]
     timers: TimerWheel,
     poll: Poll,
     waiting: HashMap<usize, WaitEntry<'arena>>,
@@ -114,7 +114,7 @@ impl<'arena> Driver<'arena> {
         Ok(Self {
             squeue: Vec::with_capacity(entries),
             events: Events::with_capacity(entries),
-            #[cfg(feature="time")]
+            #[cfg(feature = "time")]
             timers: TimerWheel::with_capacity(16),
             poll: Poll::new()?,
             waiting: HashMap::new(),
@@ -226,7 +226,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
                             None
                         }
                     }
-                    #[cfg(feature="time")]
+                    #[cfg(feature = "time")]
                     Ok(Decision::Completed(TIMER_PENDING)) => {
                         self.timers.insert(user_data, op.timer_delay());
                         None
@@ -252,7 +252,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         // poll only when nothing was completed
 
         loop {
-            #[cfg(feature="time")]
+            #[cfg(feature = "time")]
             let timeout = self.timers.till_next_timer_or_timeout(timeout);
 
             match self.poll.poll(&mut self.events, timeout) {
@@ -262,7 +262,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
             };
         }?;
 
-        #[cfg(feature="time")]
+        #[cfg(feature = "time")]
         self.timers.expire_timers(entries);
 
         let registry = self.poll.registry();

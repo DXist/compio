@@ -1,7 +1,7 @@
 use std::io;
 
 use crate::{
-    driver::{RawFd, post_driver_raw, Overlapped},
+    driver::{post_driver_raw, Overlapped, RawFd},
     key::Key,
     task::{op::OpFuture, RUNTIME},
 };
@@ -36,7 +36,7 @@ impl Event {
 /// A handle to [`Event`].
 pub struct EventHandle {
     handle: RawFd,
-    overlapped: Overlapped
+    overlapped: Overlapped,
 }
 
 // Safety: IOCP handle is thread safe.
@@ -47,14 +47,11 @@ impl EventHandle {
     pub(crate) fn new(user_data: &Key<()>) -> Self {
         let handle = RUNTIME.with(|runtime| runtime.raw_driver());
         let overlapped = Overlapped::new(**user_data);
-        Self {
-            handle,
-            overlapped
-        }
+        Self { handle, overlapped }
     }
 
     /// Notify the event.
     pub fn notify(&mut self) -> io::Result<()> {
-        unsafe {post_driver_raw(self.handle, Ok(0), &mut self.overlapped.base) }
+        unsafe { post_driver_raw(self.handle, Ok(0), &mut self.overlapped.base) }
     }
 }

@@ -1,7 +1,9 @@
 /// Timer wheel using CLOCK_BOOTTIME instants if available
 use std::collections::BinaryHeap;
 use std::time::Duration;
+
 use boot_time::Instant;
+
 use crate::driver::Entry;
 
 #[derive(Debug)]
@@ -53,9 +55,12 @@ impl TimerWheel {
 
     pub(super) fn till_next_timer_or_timeout(&self, timeout: Option<Duration>) -> Option<Duration> {
         if let Some(next_timer_delay) = self.duration_till_next_timer() {
-            Some(timeout.map(|t| t.min(next_timer_delay)).unwrap_or(next_timer_delay))
-        }
-        else {
+            Some(
+                timeout
+                    .map(|t| t.min(next_timer_delay))
+                    .unwrap_or(next_timer_delay),
+            )
+        } else {
             timeout
         }
     }
@@ -69,9 +74,8 @@ impl TimerWheel {
             if duration_till_next_timer == Duration::ZERO {
                 let timer = self.0.pop().expect("timer present");
                 entries.extend(Some(Entry::new(timer.key, Ok(0))));
-            }
-            else {
-                break
+            } else {
+                break;
             }
         }
     }

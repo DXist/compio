@@ -7,13 +7,11 @@ use socket2::SockAddr;
 
 #[cfg(target_os = "windows")]
 pub use crate::driver::op::ConnectNamedPipe;
-pub use crate::driver::op::{
-    Accept, Connect, Sync, ReadAt, RecvFromImpl, RecvImpl, SendImpl, SendToImpl, WriteAt,
-};
-
-#[cfg(feature="time")]
+#[cfg(feature = "time")]
 pub use crate::driver::op::Timeout;
-
+pub use crate::driver::op::{
+    Accept, Connect, ReadAt, RecvFromImpl, RecvImpl, SendImpl, SendToImpl, Sync, WriteAt,
+};
 use crate::{
     buf::{AsIoSlicesMut, BufWrapperMut, IoBufMut, VectoredBufWrapper},
     driver::{sockaddr_storage, socklen_t},

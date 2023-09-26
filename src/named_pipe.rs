@@ -30,12 +30,10 @@ use windows_sys::Win32::{
 
 #[cfg(feature = "runtime")]
 use crate::{buf::*, op::ConnectNamedPipe, task::RUNTIME, *};
-
 use crate::{
     driver::{AsRawFd, FromRawFd, RawFd},
     fs::File,
-    impl_raw_fd,
-    syscall
+    impl_raw_fd, syscall,
 };
 
 /// A [Windows named pipe] server.
@@ -249,8 +247,8 @@ impl_raw_fd!(NamedPipeServer, handle);
 /// [`ClientOptions::open`], it might error indicating one of two things:
 ///
 /// * [`std::io::ErrorKind::NotFound`] - There is no server available.
-/// * [`ERROR_PIPE_BUSY`] - There is a server available, but it is busy. Sleep
-///   for a while and try again.
+/// * [`ERROR_PIPE_BUSY`] - There is a server available, but it is busy. Sleep for a while and try
+///   again.
 ///
 /// So a correctly implemented client looks like this:
 ///
@@ -755,7 +753,7 @@ impl ServerOptions {
     ///
     /// # })
     /// ```
-    ///
+    /// 
     /// [`WRITE_DAC`]: https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createnamedpipea
     pub fn write_dac(&mut self, requested: bool) -> &mut Self {
         self.write_dac = requested;
@@ -1090,11 +1088,11 @@ impl ClientOptions {
     /// There are a few errors you need to take into account when creating a
     /// named pipe on the client side:
     ///
-    /// * [`std::io::ErrorKind::NotFound`] - This indicates that the named pipe
-    ///   does not exist. Presumably the server is not up.
-    /// * [`ERROR_PIPE_BUSY`] - This error is raised when the named pipe exists,
-    ///   but the server is not currently waiting for a connection. Please see
-    ///   the examples for how to check for this error.
+    /// * [`std::io::ErrorKind::NotFound`] - This indicates that the named pipe does not exist.
+    ///   Presumably the server is not up.
+    /// * [`ERROR_PIPE_BUSY`] - This error is raised when the named pipe exists, but the server is
+    ///   not currently waiting for a connection. Please see the examples for how to check for this
+    ///   error.
     ///
     /// [`ERROR_PIPE_BUSY`]: https://docs.rs/windows-sys/latest/windows_sys/Win32/Foundation/constant.ERROR_PIPE_BUSY.html
     ///

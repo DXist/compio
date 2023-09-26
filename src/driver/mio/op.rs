@@ -2,14 +2,14 @@ use std::{io, ops::ControlFlow};
 
 use mio::event::Event;
 
+#[cfg(feature = "time")]
+pub use crate::driver::time::Timeout;
 pub use crate::driver::unix::op::*;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut},
     driver::{Decision, OpCode},
     syscall,
 };
-#[cfg(feature = "time")]
-pub use crate::driver::time::Timeout;
 
 impl<'arena, T: IoBufMut<'arena>> OpCode for ReadAt<'arena, T> {
     fn pre_submit(&mut self) -> io::Result<Decision> {
@@ -219,7 +219,7 @@ impl OpCode for Timeout {
         unimplemented!("not relevant to timers")
     }
 
-    #[cfg(feature="time")]
+    #[cfg(feature = "time")]
     fn timer_delay(&self) -> std::time::Duration {
         self.delay
     }

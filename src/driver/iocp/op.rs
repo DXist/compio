@@ -29,16 +29,15 @@ use windows_sys::{
     },
 };
 
+#[cfg(feature = "time")]
+use crate::driver::iocp::TIMER_PENDING;
+#[cfg(feature = "time")]
+pub use crate::driver::time::Timeout;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IntoInner, IoBuf, IoBufMut},
-    driver::{OpCode, RawFd, iocp::Overlapped},
+    driver::{iocp::Overlapped, OpCode, RawFd},
     syscall,
 };
-
-#[cfg(feature="time")]
-use crate::driver::iocp::TIMER_PENDING;
-#[cfg(feature="time")]
-pub use crate::driver::time::Timeout;
 
 #[inline]
 unsafe fn winapi_result(transferred: u32) -> Poll<io::Result<usize>> {
@@ -245,7 +244,8 @@ impl Connect {
 impl Connect {
     /// Create [`Connect`]. `fd` should be bound.
     pub fn new(fd: RawFd, addr: SockAddr) -> Self {
-        Self { fd,
+        Self {
+            fd,
             addr,
             overlapped: Overlapped::new(usize::MAX),
         }
@@ -298,7 +298,11 @@ impl Sync {
     /// * io-uring: `fdatasync` if `datasync` specified, otherwise `fsync`.
     /// * mio: it is synchronized `fdatasync` or `fsync`.
     pub fn new(fd: RawFd, datasync: bool) -> Self {
-        Self { fd, datasync, overlapped: Overlapped::new(usize::MAX) }
+        Self {
+            fd,
+            datasync,
+            overlapped: Overlapped::new(usize::MAX),
+        }
     }
 }
 impl OpCode for Sync {
@@ -628,13 +632,16 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendToImpl<'arena, T> {
 /// Connect a named pipe server.
 pub struct ConnectNamedPipe {
     pub(crate) fd: RawFd,
-    pub(super) overlapped: Overlapped
+    pub(super) overlapped: Overlapped,
 }
 
 impl ConnectNamedPipe {
     /// Create [`ConnectNamedPipe`](struct@ConnectNamedPipe).
     pub fn new(fd: RawFd) -> Self {
-        Self { fd, overlapped: Overlapped::new(usize::MAX) }
+        Self {
+            fd,
+            overlapped: Overlapped::new(usize::MAX),
+        }
     }
 }
 
@@ -660,7 +667,7 @@ impl OpCode for Timeout {
         unimplemented!("not used for timers")
     }
 
-    #[cfg(feature="time")]
+    #[cfg(feature = "time")]
     fn timer_delay(&self) -> std::time::Duration {
         self.delay
     }

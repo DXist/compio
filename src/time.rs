@@ -1,14 +1,10 @@
 //! Utilities for tracking time.
 
-use std::{
-    error::Error,
-    fmt::Display,
-    future::Future,
-    time::Duration,
-};
-use boot_time::Instant;
+use std::{error::Error, fmt::Display, future::Future, time::Duration};
 
+use boot_time::Instant;
 use futures_util::{select, FutureExt};
+
 use crate::op::Timeout;
 
 /// Waits until `duration` has elapsed.
@@ -49,7 +45,6 @@ pub async fn sleep(duration: Duration) {
 ///
 /// ```
 /// use boot_time::{Duration, Instant};
-///
 /// use completeio::time::sleep_until;
 ///
 /// completeio::task::block_on(async {
@@ -215,7 +210,6 @@ pub fn interval(period: Duration) -> Interval {
 ///
 /// ```
 /// use boot_time::{Duration, Instant};
-///
 /// use completeio::time::interval_at;
 ///
 /// completeio::task::block_on(async {

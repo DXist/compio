@@ -1,14 +1,13 @@
+#[cfg(feature = "time")]
+use std::time::Duration;
+
+#[cfg(feature = "time")]
+use io_uring::types::{TimeoutFlags, Timespec};
 use io_uring::{
     opcode,
     squeue::Entry,
     types::{Fd, FsyncFlags},
 };
-#[cfg(feature="time")]
-use std::time::Duration;
-
-#[cfg(feature="time")]
-use io_uring::types::{Timespec, TimeoutFlags};
-
 use libc::sockaddr_storage;
 
 pub use crate::driver::unix::op::*;
@@ -110,16 +109,20 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendToImpl<'arena, T> {
 /// CLOCK_MONOTONIC is used.
 ///
 /// Only io_uring driver supports waiting using CLOCK_BOOTTIME clock.
-#[cfg(feature="time")]
+#[cfg(feature = "time")]
 #[repr(transparent)]
 pub struct Timeout {
-    timespec: Timespec
+    timespec: Timespec,
 }
 
 #[cfg(feature = "time")]
 impl Timeout {
     // ETIME_SUCCESS seems not to work on Linux 5.15
-    const FLAGS: TimeoutFlags = unsafe { TimeoutFlags::from_bits_unchecked(TimeoutFlags::BOOTTIME.bits() | TimeoutFlags::ETIME_SUCCESS.bits()) };
+    const FLAGS: TimeoutFlags = unsafe {
+        TimeoutFlags::from_bits_unchecked(
+            TimeoutFlags::BOOTTIME.bits() | TimeoutFlags::ETIME_SUCCESS.bits(),
+        )
+    };
 
     /// Create `Timeout` with the provided duration.
     pub fn new(delay: Duration) -> Self {
@@ -128,9 +131,11 @@ impl Timeout {
     }
 }
 
-#[cfg(feature="time")]
+#[cfg(feature = "time")]
 impl OpCode for Timeout {
     fn create_entry(&mut self) -> Entry {
-        opcode::Timeout::new(&self.timespec as *const Timespec).flags(Self::FLAGS).build()
+        opcode::Timeout::new(&self.timespec as *const Timespec)
+            .flags(Self::FLAGS)
+            .build()
     }
 }

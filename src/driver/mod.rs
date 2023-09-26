@@ -108,10 +108,9 @@ pub trait CompleteIo<'arena> {
     /// Attach an fd to the driver.
     ///
     /// ## Platform specific
-    /// * IOCP: it will be attached to the completion port. An fd could only be
-    ///   attached to one driver, and could only be attached once, even if you
-    ///   `try_clone` it. It will cause unexpected result to attach the handle
-    ///   with one driver and push an op to another driver.
+    /// * IOCP: it will be attached to the completion port. An fd could only be attached to one
+    ///   driver, and could only be attached once, even if you `try_clone` it. It will cause
+    ///   unexpected result to attach the handle with one driver and push an op to another driver.
     /// * io-uring/mio: it will do nothing and return `Ok(())`
     fn attach(&mut self, fd: RawFd) -> io::Result<()>;
 
@@ -163,8 +162,7 @@ pub trait CompleteIo<'arena> {
     ///
     /// # Safety
     ///
-    /// * Operations should be alive until [`CompleteIo::poll`] returns its
-    ///   result.
+    /// * Operations should be alive until [`CompleteIo::poll`] returns its result.
     /// * User defined data should be unique.
     unsafe fn submit_and_wait_completed(
         &mut self,

@@ -27,12 +27,12 @@ use windows_sys::Win32::{
     },
 };
 
+#[cfg(feature = "time")]
+use crate::driver::time::TimerWheel;
 use crate::{
     driver::{CompleteIo, Entry, OpObject, Operation},
     syscall, vec_deque_alloc,
 };
-#[cfg(feature="time")]
-use crate::driver::time::TimerWheel;
 
 pub(crate) mod op;
 
@@ -119,7 +119,7 @@ pub trait OpCode {
     fn overlapped(&mut self) -> &mut OVERLAPPED;
 
     /// Only timers implement this method
-    #[cfg(feature="time")]
+    #[cfg(feature = "time")]
     fn timer_delay(&self) -> Duration {
         unimplemented!("operation is not a timer")
     }
@@ -133,7 +133,7 @@ pub struct Driver<'arena> {
     squeue: Vec<OpObject<'arena>>,
     iocp_entries: Vec<OVERLAPPED_ENTRY>,
     cancelled: HashSet<usize>,
-    #[cfg(feature="time")]
+    #[cfg(feature = "time")]
     timers: TimerWheel,
     _lifetime: PhantomData<&'arena ()>,
 }
@@ -153,7 +153,7 @@ impl<'arena> Driver<'arena> {
             squeue: Vec::with_capacity(entries as usize),
             iocp_entries: Vec::with_capacity(entries as usize),
             cancelled: HashSet::default(),
-            #[cfg(feature="time")]
+            #[cfg(feature = "time")]
             timers: TimerWheel::with_capacity(16),
             _lifetime: PhantomData,
         })
@@ -238,7 +238,7 @@ fn ntstatus_from_win32(x: i32) -> NTSTATUS {
     }
 }
 
-#[cfg(feature="time")]
+#[cfg(feature = "time")]
 const TIMER_PENDING: usize = usize::MAX - 2;
 
 impl<'arena> CompleteIo<'arena> for Driver<'arena> {
@@ -306,21 +306,23 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
                 let op = operation.opcode();
                 let result = op.operate(user_data);
                 match result {
-                    #[cfg(feature="time")]
-                    Poll::Ready(Ok(TIMER_PENDING)) => self.timers.insert(user_data, op.timer_delay()),
+                    #[cfg(feature = "time")]
+                    Poll::Ready(Ok(TIMER_PENDING)) => {
+                        self.timers.insert(user_data, op.timer_delay())
+                    }
                     Poll::Ready(result) => {
                         post_driver_raw(self.port.as_raw_handle(), result, op.overlapped())?;
-                    },
+                    }
                     _ => {}
                 }
             }
         }
 
-        #[cfg(feature="time")]
+        #[cfg(feature = "time")]
         let timeout = self.timers.till_next_timer_or_timeout(timeout);
 
         self.poll_impl(timeout)?;
-        #[cfg(feature="time")]
+        #[cfg(feature = "time")]
         self.timers.expire_timers(entries);
 
         {

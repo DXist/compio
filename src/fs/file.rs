@@ -4,13 +4,12 @@ use std::{fs::Metadata, io, path::Path};
 
 #[cfg(feature = "runtime")]
 use crate::{
-    vec_alloc,
     buf::{IntoInner, IoBuf, IoBufMut},
     buf_try,
     driver::AsRawFd,
     op::{ReadAt, Sync, WriteAt},
     task::RUNTIME,
-    Attacher, BufResult,
+    vec_alloc, Attacher, BufResult,
 };
 use crate::{fs::OpenOptions, impl_raw_fd};
 
