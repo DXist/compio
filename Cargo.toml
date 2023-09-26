@@ -30,6 +30,7 @@ targets = [
 [dependencies]
 arrayvec = { version = "0.7", optional = true }
 async-task = { version = "4", optional = true }
+boot-time = { version = "0.1", optional = true }
 bytes = { version = "1", optional = true }
 cfg-if = "1"
 futures-util = { version = "0.3", optional = true }
@@ -69,7 +70,7 @@ windows-sys = { version = "0.48", features = ["Win32_Security_Authorization"] }
 
 # Linux specific dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
-io-uring = "0.6"
+io-uring = "0.6.2"
 libc = "0.2"
 
 # Other platform dependencies
@@ -80,11 +81,12 @@ boot-time = "0.1"
 
 [features]
 default = ["time"]
+time = []
 runtime = ["dep:async-task", "dep:futures-util", "dep:slab"]
+runtime-time = ["runtime", "time", "dep:boot-time"]
 event = ["runtime", "arrayvec"]
 signal = ["event"]
-time = []
-all = ["runtime", "time", "signal"]
+all = ["runtime-time", "signal"]
 
 allocator_api = ["bumpalo/allocator_api"]
 lazy_cell = []

@@ -10,6 +10,10 @@ pub use crate::driver::op::ConnectNamedPipe;
 pub use crate::driver::op::{
     Accept, Connect, Sync, ReadAt, RecvFromImpl, RecvImpl, SendImpl, SendToImpl, WriteAt,
 };
+
+#[cfg(feature="time")]
+pub use crate::driver::op::Timeout;
+
 use crate::{
     buf::{AsIoSlicesMut, BufWrapperMut, IoBufMut, VectoredBufWrapper},
     driver::{sockaddr_storage, socklen_t},
@@ -113,24 +117,3 @@ pub type RecvFromVectored<'arena, T> = RecvFromImpl<'arena, VectoredBufWrapper<'
 pub type SendTo<'arena, T> = SendToImpl<'arena, T>;
 /// Send data to address with vectored buffer.
 pub type SendToVectored<'arena, T> = SendToImpl<'arena, VectoredBufWrapper<'arena, T>>;
-
-/// Timeout operation completes after the given relative timeout duration.
-///
-/// If supported by platform timeout operation will take into account the time
-/// spent in low power modes or suspend (CLOCK_BOOTTIME). Otherwise
-/// CLOCK_MONOTONIC is used.
-///
-/// Only io_uring driver supports waiting using CLOCK_BOOTTIME clock.
-#[cfg(feature = "time")]
-#[repr(transparent)]
-pub struct Timeout {
-    pub(crate) delay: std::time::Duration,
-}
-
-#[cfg(feature = "time")]
-impl Timeout {
-    /// Create `Timeout` with the provided duration.
-    pub fn new(delay: std::time::Duration) -> Self {
-        Self { delay }
-    }
-}

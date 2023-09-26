@@ -36,7 +36,9 @@ use crate::{
 };
 
 #[cfg(feature="time")]
-use crate::{op::Timeout, driver::iocp::TIMER_PENDING};
+use crate::driver::iocp::TIMER_PENDING;
+#[cfg(feature="time")]
+pub use crate::driver::time::Timeout;
 
 #[inline]
 unsafe fn winapi_result(transferred: u32) -> Poll<io::Result<usize>> {

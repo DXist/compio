@@ -29,7 +29,7 @@ pub(crate) use attacher::Attacher;
 pub mod signal;
 #[cfg(feature = "runtime")]
 pub mod task;
-#[cfg(all(feature = "runtime", feature = "time"))]
+#[cfg(feature = "runtime-time")]
 pub mod time;
 
 /// A specialized `Result` type for operations with buffers.

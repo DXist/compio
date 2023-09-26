@@ -9,7 +9,7 @@ use crate::{
     syscall,
 };
 #[cfg(feature = "time")]
-use crate::op::Timeout;
+pub use crate::driver::time::Timeout;
 
 impl<'arena, T: IoBufMut<'arena>> OpCode for ReadAt<'arena, T> {
     fn pre_submit(&mut self) -> io::Result<Decision> {

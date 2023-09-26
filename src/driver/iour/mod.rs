@@ -76,12 +76,15 @@ impl<'arena> Driver<'arena> {
     }
 
     fn complete_entries(&mut self, entries: &mut impl Extend<Entry>) {
+        const TIMER_EXPIRED: i32 = -libc::ETIME;
         const NO_ENTRY: i32 = -libc::ENOENT;
         const NOT_CANCELLABLE: i32 = -libc::EALREADY;
 
         let completed_entries = self.inner.completion().filter_map(|entry| {
             // https://man7.org/linux/man-pages/man3/io_uring_prep_cancel.3.html
             match entry.result() {
+                // The specified timeout occurred and triggered the completion event.,
+                TIMER_EXPIRED => Some(Entry::new(entry.user_data() as usize, Ok(0))),
                 // The request identified by user_data could not be located.
                 // This could be because it completed before the cancelation
                 // request was issued, or if an invalid identifier is used.

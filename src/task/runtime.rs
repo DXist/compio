@@ -63,7 +63,6 @@ impl Runtime {
                 return result;
             }
             self.poll();
-            assert!(self.runnables.borrow_mut().len() > 0);
         }
     }
 
