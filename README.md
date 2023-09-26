@@ -4,8 +4,9 @@
 [![crates.io](https://img.shields.io/crates/v/completeio)](https://crates.io/crates/completeio)
 [![docs.rs](https://img.shields.io/badge/docs.rs-completeio-latest)](https://docs.rs/completeio)
 
-A thread-per-core Rust IO drivers and runtime with IOCP/io_uring/mio.
+A thread-per-core Rust IO drivers and async runtime backed by IOCP/io_uring/mio.
 The name comes from "completion-based IO".
+
 This repository is a fork of [completeio](https://github.com/compio-rs/compio).
 
 ## Why not Compio?
@@ -14,11 +15,15 @@ The project has different goals:
 
 * provide low overhead IO drivers that preallocate memory on initialization
 * drivers API accepts non-'static IO buffers
-* bias towards IoUring API to achieve zero-cost abstraction:
+
+    * drivers don't own buffers
+    * buffers are required to be Unpin
+
+* bias towards IoUring API to achieve zero-cost abstraction on Linux:
 
     * fixed size submission queue for operations
-    * external runtime could submit an external queue of not yet queued operations
-    * timers are exposed as Timeout operation and use CLOCK_BOOTTIME clock source when it's available
+    * external runtime could submit an external queue of not yet queued operations as a single batch
+    * timers are exposed as `Timeout` operation and use suspend-aware CLOCK_BOOTTIME clock source when it's available
 
 * Async runtime is an example runtime to test implementation of drivers
 
