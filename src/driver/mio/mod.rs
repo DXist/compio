@@ -4,6 +4,7 @@ use std::alloc::Allocator;
 pub use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::{
     collections::{HashMap, HashSet},
+    marker::PhantomData,
     io,
     ops::ControlFlow,
     time::Duration,
@@ -19,14 +20,49 @@ use mio::{
 #[cfg(feature = "time")]
 use crate::driver::time::TimerWheel;
 use crate::{
-    driver::{CompleteIo, Entry, OpObject, Operation},
+    driver::{CompleteIo, Entry, OpObject, Operation, unix::IntoFdOrFixed},
     vec_deque_alloc,
 };
 
 pub(crate) mod op;
 
+/// Attached file descriptor.
+///
+/// Can't be moved between threads.
+#[derive(Debug, Clone, Copy)]
+pub struct Fd {
+    raw_fd: RawFd,
+    _not_send_not_sync: PhantomData<*const ()>
+}
+
+impl Fd {
+    #[inline]
+    const fn from_raw(raw_fd: RawFd) -> Self {
+        Self { raw_fd, _not_send_not_sync: PhantomData }
+    }
+
+    #[inline]
+    fn as_raw_fd(&self) -> RawFd {
+        self.raw_fd
+    }
+}
+
+impl IntoFdOrFixed for Fd {
+    type Target = Fd;
+
+    #[inline]
+    fn into(self) -> Self::Target {
+        self
+    }
+}
+
+/// Fixed fd is aliased to attached fd
+pub type FixedFd = Fd;
+/// FdOrFixed is aliased to attached fd
+pub type FdOrFixed = Fd;
+
 /// Invalid file descriptor value could be used as an initial value of uninitialized file descriptor
-pub const INVALID_FD: RawFd = -1;
+pub const INVALID_FD: FdOrFixed = Fd::from_raw(-1);
 
 /// Abstraction of operations.
 pub trait OpCode {
@@ -55,17 +91,17 @@ pub enum Decision {
 
 impl Decision {
     /// Decide to wait for the given fd with the given interest.
-    pub fn wait_for(fd: RawFd, interest: Interest) -> Self {
+    pub fn wait_for(fd: Fd, interest: Interest) -> Self {
         Self::Wait(WaitArg { fd, interest })
     }
 
     /// Decide to wait for the given fd to be readable.
-    pub fn wait_readable(fd: RawFd) -> Self {
+    pub fn wait_readable(fd: Fd) -> Self {
         Self::wait_for(fd, Interest::READABLE)
     }
 
     /// Decide to wait for the given fd to be writable.
-    pub fn wait_writable(fd: RawFd) -> Self {
+    pub fn wait_writable(fd: Fd) -> Self {
         Self::wait_for(fd, Interest::WRITABLE)
     }
 }
@@ -73,7 +109,7 @@ impl Decision {
 /// Meta of mio operations.
 #[derive(Debug, Clone, Copy)]
 pub struct WaitArg {
-    fd: RawFd,
+    fd: Fd,
     interest: Interest,
 }
 
@@ -107,11 +143,13 @@ impl<'arena> WaitEntry<'arena> {
 impl<'arena> Driver<'arena> {
     /// Create a new mio driver with 1024 entries.
     pub fn new() -> io::Result<Self> {
-        Self::with_entries(1024)
+        Self::with(1024, 0)
     }
 
-    /// Create a new mio driver with the given number of entries.
-    pub fn with_entries(entries: u32) -> io::Result<Self> {
+    /// Create a new Mio driver with specified entries.
+    ///
+    /// File registration is implemented as dummy operation.
+    pub fn with(entries: u32, _files_to_register: u32) -> io::Result<Self> {
         let entries = entries as usize; // for the sake of consistency, use u32 like iour
 
         Ok(Self {
@@ -136,7 +174,7 @@ impl<'arena> Driver<'arena> {
         if !cancelled.remove(&user_data) {
             let token = Token(user_data);
 
-            SourceFd(&arg.fd).register(registry, token, arg.interest)?;
+            SourceFd(&arg.fd.as_raw_fd()).register(registry, token, arg.interest)?;
 
             // Only insert the entry after it was registered successfully
             waiting.insert(user_data, WaitEntry::new(op, user_data, arg));
@@ -147,8 +185,12 @@ impl<'arena> Driver<'arena> {
 
 impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     #[inline]
-    fn attach(&mut self, _fd: RawFd) -> io::Result<()> {
-        Ok(())
+    fn attach(&mut self, fd: RawFd) -> io::Result<Fd> {
+        Ok(Fd::from_raw(fd))
+    }
+    #[inline]
+    fn register_fd(&mut self, fd: RawFd, _id: u32) -> io::Result<FixedFd> {
+        Ok(FixedFd::from_raw(fd))
     }
 
     #[inline]
@@ -156,7 +198,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         if let Some(entry) = self.waiting.remove(&user_data) {
             self.poll
                 .registry()
-                .deregister(&mut SourceFd(&entry.arg.fd))
+                .deregister(&mut SourceFd(&entry.arg.fd.as_raw_fd()))
                 .ok();
         } else {
             self.cancelled.insert(user_data);
@@ -254,7 +296,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
 
         // poll only when nothing was completed
 
-        loop {
+        let res = loop {
             #[cfg(feature = "time")]
             let timeout = self.timers.till_next_timer_or_timeout(timeout);
 
@@ -263,7 +305,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
                 Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
                 Err(err) => break Err(err),
             };
-        }?;
+        };
 
         #[cfg(feature = "time")]
         self.timers.expire_timers(entries);
@@ -283,7 +325,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
                 (entry.user_data, &entry.arg.fd, maybe_result)
             };
             if let Some(result) = maybe_result {
-                let res = if let Err(err) = registry.deregister(&mut SourceFd(fd)) {
+                let res = if let Err(err) = registry.deregister(&mut SourceFd(&fd.as_raw_fd())) {
                     Err(err)
                 } else {
                     result
@@ -295,7 +337,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
             }
         });
         entries.extend(completed_iter);
-        Ok(())
+        res
     }
 }
 

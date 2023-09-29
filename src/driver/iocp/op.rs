@@ -35,7 +35,7 @@ use crate::driver::iocp::TIMER_PENDING;
 pub use crate::driver::time::Timeout;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IntoInner, IoBuf, IoBufMut},
-    driver::{iocp::Overlapped, OpCode, RawFd},
+    driver::{iocp::Overlapped, OpCode, Fd, RawFd},
     syscall,
 };
 
@@ -83,13 +83,13 @@ unsafe fn winsock_result(res: i32, transferred: u32) -> Poll<io::Result<usize>> 
     }
 }
 
-unsafe fn get_wsa_fn<F>(handle: RawFd, fguid: GUID) -> io::Result<Option<F>> {
+unsafe fn get_wsa_fn<F>(handle: Fd, fguid: GUID) -> io::Result<Option<F>> {
     let mut fptr = None;
     let mut returned = 0;
     syscall!(
         SOCKET,
         WSAIoctl(
-            handle as _,
+            handle.as_raw_fd() as _,
             SIO_GET_EXTENSION_FUNCTION_POINTER,
             std::ptr::addr_of!(fguid).cast(),
             std::mem::size_of_val(&fguid) as _,
@@ -105,7 +105,7 @@ unsafe fn get_wsa_fn<F>(handle: RawFd, fguid: GUID) -> io::Result<Option<F>> {
 
 /// Read a file at specified position into specified buffer.
 pub struct ReadAt<'arena, T: IoBufMut<'arena>> {
-    pub(crate) fd: RawFd,
+    pub(crate) fd: Fd,
     pub(crate) offset: usize,
     pub(crate) buffer: T,
     pub(super) overlapped: Overlapped,
@@ -114,7 +114,7 @@ pub struct ReadAt<'arena, T: IoBufMut<'arena>> {
 
 impl<'arena, T: IoBufMut<'arena>> ReadAt<'arena, T> {
     /// Create [`ReadAt`].
-    pub fn new(fd: RawFd, offset: usize, buffer: T) -> Self {
+    pub fn new(fd: Fd, offset: usize, buffer: T) -> Self {
         Self {
             fd,
             offset,
@@ -142,7 +142,7 @@ impl<'arena, T: IoBufMut<'arena>> OpCode for ReadAt<'arena, T> {
             self.overlapped().Anonymous.Anonymous.OffsetHigh = (self.offset >> 32) as _;
         }
 
-        let fd = self.fd as _;
+        let fd = self.fd.as_raw_fd() as _;
         // SAFETY: buffer is Unpin
         let slice = self.buffer.as_uninit_slice();
         let res = ReadFile(
@@ -162,7 +162,7 @@ impl<'arena, T: IoBufMut<'arena>> OpCode for ReadAt<'arena, T> {
 
 /// Write a file at specified position from specified buffer.
 pub struct WriteAt<'arena, T: IoBuf<'arena>> {
-    pub(crate) fd: RawFd,
+    pub(crate) fd: Fd,
     pub(crate) offset: usize,
     pub(crate) buffer: T,
     pub(super) overlapped: Overlapped,
@@ -171,7 +171,7 @@ pub struct WriteAt<'arena, T: IoBuf<'arena>> {
 
 impl<'arena, T: IoBuf<'arena>> WriteAt<'arena, T> {
     /// Create [`WriteAt`].
-    pub fn new(fd: RawFd, offset: usize, buffer: T) -> Self {
+    pub fn new(fd: Fd, offset: usize, buffer: T) -> Self {
         Self {
             fd,
             offset,
@@ -201,7 +201,7 @@ impl<'arena, T: IoBuf<'arena>> OpCode for WriteAt<'arena, T> {
         // SAFETY: buffer is Unpin
         let slice = self.buffer.as_slice();
         let res = WriteFile(
-            self.fd as _,
+            self.fd.as_raw_fd() as _,
             slice.as_ptr() as _,
             slice.len() as _,
             null_mut(),
@@ -219,7 +219,7 @@ static CONNECT_EX: OnceLock<LPFN_CONNECTEX> = OnceLock::new();
 
 /// Connect to a remote address.
 pub struct Connect {
-    pub(crate) fd: RawFd,
+    pub(crate) fd: Fd,
     pub(crate) addr: SockAddr,
     pub(super) overlapped: Overlapped,
 }
@@ -230,7 +230,7 @@ impl Connect {
         syscall!(
             SOCKET,
             setsockopt(
-                self.fd as _,
+                self.fd.as_raw_fd() as _,
                 SOL_SOCKET,
                 SO_UPDATE_CONNECT_CONTEXT,
                 null(),
@@ -243,7 +243,7 @@ impl Connect {
 
 impl Connect {
     /// Create [`Connect`]. `fd` should be bound.
-    pub fn new(fd: RawFd, addr: SockAddr) -> Self {
+    pub fn new(fd: Fd, addr: SockAddr) -> Self {
         Self {
             fd,
             addr,
@@ -262,7 +262,7 @@ impl OpCode for Connect {
             })?;
         let mut sent = 0;
         let res = connect_fn(
-            self.fd as _,
+            self.fd.as_raw_fd() as _,
             // SAFETY: SockAddr is Unpin - https://docs.rs/socket2/latest/socket2/struct.SockAddr.html#impl-Unpin-for-SockAddr
             self.addr.as_ptr(),
             self.addr.len(),
@@ -281,7 +281,7 @@ impl OpCode for Connect {
 
 /// Sync data to the disk.
 pub struct Sync {
-    pub(crate) fd: RawFd,
+    pub(crate) fd: Fd,
     #[allow(dead_code)]
     pub(crate) datasync: bool,
     pub(super) overlapped: Overlapped,
@@ -297,7 +297,7 @@ impl Sync {
     /// * IOCP: it is synchronized operation, and calls `FlushFileBuffers`.
     /// * io-uring: `fdatasync` if `datasync` specified, otherwise `fsync`.
     /// * mio: it is synchronized `fdatasync` or `fsync`.
-    pub fn new(fd: RawFd, datasync: bool) -> Self {
+    pub fn new(fd: Fd, datasync: bool) -> Self {
         Self {
             fd,
             datasync,
@@ -307,7 +307,7 @@ impl Sync {
 }
 impl OpCode for Sync {
     unsafe fn operate(&mut self, _user_data: usize) -> Poll<io::Result<usize>> {
-        let res = FlushFileBuffers(self.fd as _);
+        let res = FlushFileBuffers(self.fd.as_raw_fd() as _);
         win32_result(res, 0)
     }
 
@@ -321,7 +321,7 @@ static GET_ADDRS: OnceLock<LPFN_GETACCEPTEXSOCKADDRS> = OnceLock::new();
 
 /// Accept a connection.
 pub struct Accept {
-    pub(crate) fd: RawFd,
+    pub(crate) fd: Fd,
     pub(crate) accept_fd: RawFd,
     pub(crate) buffer: SOCKADDR_STORAGE,
     pub(super) overlapped: Overlapped,
@@ -329,7 +329,7 @@ pub struct Accept {
 
 impl Accept {
     /// Create [`Accept`]. `accept_fd` should not be bound.
-    pub fn new(fd: RawFd, accept_fd: RawFd) -> Self {
+    pub fn new(fd: Fd, accept_fd: RawFd) -> Self {
         Self {
             fd,
             accept_fd,
@@ -346,7 +346,7 @@ impl Accept {
                 self.accept_fd as _,
                 SOL_SOCKET,
                 SO_UPDATE_ACCEPT_CONTEXT,
-                &self.fd as *const _ as _,
+                &self.fd.as_raw_fd() as *const _ as _,
                 std::mem::size_of_val(&self.fd) as _,
             )
         )?;
@@ -393,7 +393,7 @@ impl OpCode for Accept {
             })?;
         let mut received = 0;
         let res = accept_fn(
-            self.fd as _,
+            self.fd.as_raw_fd() as _,
             self.accept_fd as _,
             &mut self.buffer as *mut _ as *mut _,
             0,
@@ -412,7 +412,7 @@ impl OpCode for Accept {
 
 /// Receive data from remote.
 pub struct RecvImpl<'arena, T: AsIoSlicesMut<'arena>> {
-    pub(crate) fd: RawFd,
+    pub(crate) fd: Fd,
     pub(crate) buffer: T,
     pub(super) overlapped: Overlapped,
     _lifetime: PhantomData<&'arena ()>,
@@ -420,7 +420,7 @@ pub struct RecvImpl<'arena, T: AsIoSlicesMut<'arena>> {
 
 impl<'arena, T: AsIoSlicesMut<'arena>> RecvImpl<'arena, T> {
     /// Create [`Recv`] or [`RecvVectored`].
-    pub fn new(fd: RawFd, buffer: T) -> Self {
+    pub fn new(fd: Fd, buffer: T) -> Self {
         // SAFETY: buffer is Unpin, IoSliceMut is Unpin as well
         Self {
             fd,
@@ -444,7 +444,7 @@ impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvImpl<'arena, T> {
         self.overlapped.user_data = user_data;
         // SAFETY: IoSliceMut is Unpin
         let slices = unsafe { self.buffer.as_io_slices_mut() };
-        let fd = self.fd;
+        let fd = self.fd.as_raw_fd();
         let mut flags = 0;
         let mut received = 0;
         let res = WSARecv(
@@ -466,7 +466,7 @@ impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvImpl<'arena, T> {
 
 /// Send data to remote.
 pub struct SendImpl<'arena, T: AsIoSlices<'arena>> {
-    pub(crate) fd: RawFd,
+    pub(crate) fd: Fd,
     pub(crate) buffer: T,
     pub(super) overlapped: Overlapped,
     _lifetime: PhantomData<&'arena ()>,
@@ -474,7 +474,7 @@ pub struct SendImpl<'arena, T: AsIoSlices<'arena>> {
 
 impl<'arena, T: AsIoSlices<'arena>> SendImpl<'arena, T> {
     /// Create [`Send`] or [`SendVectored`].
-    pub fn new(fd: RawFd, buffer: T) -> Self {
+    pub fn new(fd: Fd, buffer: T) -> Self {
         Self {
             fd,
             buffer,
@@ -499,7 +499,7 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendImpl<'arena, T> {
         let slices = unsafe { self.buffer.as_io_slices() };
         let mut sent = 0;
         let res = WSASend(
-            self.fd as _,
+            self.fd.as_raw_fd() as _,
             slices.as_ptr() as _,
             slices.len() as _,
             &mut sent,
@@ -517,7 +517,7 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendImpl<'arena, T> {
 
 /// Receive data and source address.
 pub struct RecvFromImpl<'arena, T: AsIoSlicesMut<'arena>> {
-    pub(crate) fd: RawFd,
+    pub(crate) fd: Fd,
     pub(crate) buffer: T,
     pub(crate) addr: SOCKADDR_STORAGE,
     pub(crate) addr_len: socklen_t,
@@ -527,7 +527,7 @@ pub struct RecvFromImpl<'arena, T: AsIoSlicesMut<'arena>> {
 
 impl<'arena, T: AsIoSlicesMut<'arena>> RecvFromImpl<'arena, T> {
     /// Create [`RecvFrom`] or [`RecvFromVectored`].
-    pub fn new(fd: RawFd, buffer: T) -> Self {
+    pub fn new(fd: Fd, buffer: T) -> Self {
         Self {
             fd,
             buffer,
@@ -550,7 +550,7 @@ impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvFromImpl<'arena, T> {
 impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvFromImpl<'arena, T> {
     unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
         self.overlapped.user_data = user_data;
-        let fd = self.fd;
+        let fd = self.fd.as_raw_fd();
         // SAFETY: buffer is Unpin, IoSliceMut is Unpin as well
         let slices = unsafe { self.buffer.as_io_slices_mut() };
         let mut flags = 0;
@@ -576,7 +576,7 @@ impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvFromImpl<'arena, T> {
 
 /// Send data to specified address.
 pub struct SendToImpl<'arena, T: AsIoSlices<'arena>> {
-    pub(crate) fd: RawFd,
+    pub(crate) fd: Fd,
     pub(crate) buffer: T,
     pub(crate) addr: SockAddr,
     pub(super) overlapped: Overlapped,
@@ -585,7 +585,7 @@ pub struct SendToImpl<'arena, T: AsIoSlices<'arena>> {
 
 impl<'arena, T: AsIoSlices<'arena>> SendToImpl<'arena, T> {
     /// Create [`SendTo`] or [`SendToVectored`].
-    pub fn new(fd: RawFd, buffer: T, addr: SockAddr) -> Self {
+    pub fn new(fd: Fd, buffer: T, addr: SockAddr) -> Self {
         Self {
             fd,
             buffer,
@@ -611,7 +611,7 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendToImpl<'arena, T> {
         let slices = unsafe { self.buffer.as_io_slices() };
         let mut sent = 0;
         let res = WSASendTo(
-            self.fd as _,
+            self.fd.as_raw_fd() as _,
             slices.as_ptr() as _,
             slices.len() as _,
             &mut sent,
@@ -631,13 +631,13 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendToImpl<'arena, T> {
 
 /// Connect a named pipe server.
 pub struct ConnectNamedPipe {
-    pub(crate) fd: RawFd,
+    pub(crate) fd: Fd,
     pub(super) overlapped: Overlapped,
 }
 
 impl ConnectNamedPipe {
     /// Create [`ConnectNamedPipe`](struct@ConnectNamedPipe).
-    pub fn new(fd: RawFd) -> Self {
+    pub fn new(fd: Fd) -> Self {
         Self {
             fd,
             overlapped: Overlapped::new(usize::MAX),
@@ -648,7 +648,7 @@ impl ConnectNamedPipe {
 impl OpCode for ConnectNamedPipe {
     unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
         self.overlapped.user_data = user_data;
-        let res = ConnectNamedPipe(self.fd as _, &mut self.overlapped.base as *mut _);
+        let res = ConnectNamedPipe(self.fd.as_raw_fd() as _, &mut self.overlapped.base as *mut _);
         win32_result(res, 0)
     }
 

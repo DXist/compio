@@ -30,8 +30,9 @@ impl Event {
     /// Wait for [`EventHandle::notify`] called.
     pub async fn wait(&self) -> io::Result<()> {
         let buffer = ArrayVec::<u8, 8>::new();
+        let fd = RUNTIME.with(|runtime| runtime.attach(self.fd.as_raw_fd()))?;
         // Trick: Recv uses readv which doesn't seek.
-        let op = Recv::new(self.as_raw_fd(), BufWrapperMut::from(buffer));
+        let op = Recv::new(fd, BufWrapperMut::from(buffer));
         let (res, _) = RUNTIME.with(|runtime| runtime.submit(op)).await;
         res?;
         Ok(())

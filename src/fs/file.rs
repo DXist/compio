@@ -6,7 +6,7 @@ use std::{fs::Metadata, io, path::Path};
 use crate::{
     buf::{IntoInner, IoBuf, IoBufMut},
     buf_try,
-    driver::AsRawFd,
+    driver::Fd,
     op::{ReadAt, Sync, WriteAt},
     task::RUNTIME,
     vec_alloc, Attacher, BufResult,
@@ -79,7 +79,7 @@ impl File {
     }
 
     #[cfg(feature = "runtime")]
-    pub(crate) fn attach(&self) -> io::Result<()> {
+    pub(crate) fn attach(&self) -> io::Result<Fd> {
         self.attacher.attach(self)
     }
 
@@ -130,8 +130,8 @@ impl File {
     ) -> BufResult<usize, T> {
         use crate::op::UpdateBufferLen;
 
-        let ((), buffer) = buf_try!(self.attach(), buffer);
-        let op = ReadAt::new(self.as_raw_fd(), pos, buffer);
+        let (fd, buffer) = buf_try!(self.attach(), buffer);
+        let op = ReadAt::new(fd, pos, buffer);
         RUNTIME
             .with(|runtime| runtime.submit(op))
             .await
@@ -244,8 +244,8 @@ impl File {
     /// written to this writer.
     #[cfg(feature = "runtime")]
     pub async fn write_at<T: IoBuf<'static>>(&self, buffer: T, pos: usize) -> BufResult<usize, T> {
-        let ((), buffer) = buf_try!(self.attach(), buffer);
-        let op = WriteAt::new(self.as_raw_fd(), pos, buffer);
+        let (fd, buffer) = buf_try!(self.attach(), buffer);
+        let op = WriteAt::new(fd, pos, buffer);
         RUNTIME
             .with(|runtime| runtime.submit(op))
             .await
@@ -283,8 +283,8 @@ impl File {
 
     #[cfg(feature = "runtime")]
     async fn sync_impl(&self, datasync: bool) -> io::Result<()> {
-        self.attach()?;
-        let op = Sync::new(self.as_raw_fd(), datasync);
+        let fd = self.attach()?;
+        let op = Sync::new(fd, datasync);
         RUNTIME.with(|runtime| runtime.submit(op)).await.0?;
         Ok(())
     }

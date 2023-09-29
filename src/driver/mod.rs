@@ -61,15 +61,15 @@ cfg_if::cfg_if! {
 /// other_socket.connect(first_addr).unwrap();
 ///
 /// let mut driver = Driver::new().unwrap();
-/// driver.attach(socket.as_raw_fd()).unwrap();
-/// driver.attach(other_socket.as_raw_fd()).unwrap();
+/// let fd = driver.attach(socket.as_raw_fd()).unwrap();
+/// let other_fd = driver.attach(other_socket.as_raw_fd()).unwrap();
 ///
 /// // write data
-/// let mut op_write = op::Send::new(socket.as_raw_fd(), BufWrapper::from("hello world"));
+/// let mut op_write = op::Send::new(fd, BufWrapper::from("hello world"));
 ///
 /// // read data
 /// let buf = Vec::with_capacity(32);
-/// let mut op_read = op::Recv::new(other_socket.as_raw_fd(), BufWrapperMut::from(buf));
+/// let mut op_read = op::Recv::new(other_fd, BufWrapperMut::from(buf));
 ///
 /// let mut ops = VecDeque::from([(&mut op_write, 1).into(), (&mut op_read, 2).into()]);
 /// driver.push_queue(&mut ops);
@@ -111,8 +111,21 @@ pub trait CompleteIo<'arena> {
     /// * IOCP: it will be attached to the completion port. An fd could only be attached to one
     ///   driver, and could only be attached once, even if you `try_clone` it. It will cause
     ///   unexpected result to attach the handle with one driver and push an op to another driver.
-    /// * io-uring/mio: it will do nothing and return `Ok(())`
-    fn attach(&mut self, fd: RawFd) -> io::Result<()>;
+    /// * io-uring/mio: it will do nothing and return `Ok(Fd)`
+    fn attach(&mut self, fd: RawFd) -> io::Result<Fd>;
+
+    /// Attach fd to the driver and register it as fixed file descriptor with the provided fixed id.
+    ///
+    /// ## Platform specific
+    /// * IOCP: it will be attached to the completion port. Thus the same fd cannot be registered twice.
+    /// * io-uring: it will be registered either
+    ///     * in async way during `submit_and_wait_completed` call when submission queue is not full and no other async registration is in progress
+    ///     * or in sync style using a syscall in other cases
+    /// Async operation uses reserved `u64::MAX` user_data key. Driver handles completion.
+    /// Provided fd will override previously registered fd.
+    /// To unregister fd issue async `Close` operation.
+    /// * mio: it will do nothing.
+    fn register_fd(&mut self, fd: RawFd, id: u32) -> io::Result<FixedFd>;
 
     /// Try to cancel an operation with the pushed user-defined data.
     ///

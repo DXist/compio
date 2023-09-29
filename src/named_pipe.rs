@@ -174,8 +174,8 @@ impl NamedPipeServer {
     /// ```
     #[cfg(feature = "runtime")]
     pub async fn connect(&self) -> io::Result<()> {
-        self.handle.attach()?;
-        let op = ConnectNamedPipe::new(self.as_raw_fd());
+        let fd = self.handle.attach()?;
+        let op = ConnectNamedPipe::new(fd);
         RUNTIME.with(|runtime| runtime.submit(op)).await.0?;
         Ok(())
     }
@@ -753,7 +753,7 @@ impl ServerOptions {
     ///
     /// # })
     /// ```
-    /// 
+    ///
     /// [`WRITE_DAC`]: https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createnamedpipea
     pub fn write_dac(&mut self, requested: bool) -> &mut Self {
         self.write_dac = requested;

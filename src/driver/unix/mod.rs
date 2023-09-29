@@ -2,3 +2,10 @@
 //! common op type and utilities for unix platform (for iour and mio).
 
 pub(crate) mod op;
+
+// Sealed trait - Unix mod is private
+pub trait IntoFdOrFixed: Sized {
+    type Target;
+
+    fn into(self) -> Self::Target;
+}

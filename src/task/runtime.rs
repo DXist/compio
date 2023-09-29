@@ -10,7 +10,7 @@ use std::{
 use async_task::{Runnable, Task};
 
 use crate::{
-    driver::{AsRawFd, CompleteIo, Driver, OpCode, OpObject, RawFd},
+    driver::{AsRawFd, CompleteIo, Driver, OpCode, OpObject, RawFd, Fd},
     task::op::{OpFuture, OpRuntime},
     Key,
 };
@@ -70,7 +70,7 @@ impl Runtime {
         unsafe { self.spawn_unchecked(future) }
     }
 
-    pub fn attach(&self, fd: RawFd) -> io::Result<()> {
+    pub fn attach(&self, fd: RawFd) -> io::Result<Fd> {
         self.driver.borrow_mut().attach(fd)
     }
 
@@ -153,7 +153,7 @@ impl Runtime {
 
         if let Err(e) = unsafe { driver.submit_and_wait_completed(timeout, completer) } {
             if e.kind() == io::ErrorKind::TimedOut {
-                println!("Timeout: {}", e);
+                return
             } else {
                 panic!("{:?}", e);
             }

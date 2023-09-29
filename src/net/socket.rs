@@ -3,11 +3,15 @@ use std::{io, net::Shutdown};
 use socket2::{Domain, Protocol, SockAddr, Socket as Socket2, Type};
 
 use crate::impl_raw_fd;
+
+#[cfg(all(feature = "runtime", windows))]
+use crate::driver::AsRawFd;
+
 #[cfg(feature = "runtime")]
 use crate::{
     buf::{BufWrapper, BufWrapperMut, IntoInner, IoBuf, IoBufMut, VectoredBufWrapper},
     buf_try,
-    driver::AsRawFd,
+    driver::Fd,
     op::{
         Accept, Connect, Recv, RecvFrom, RecvFromVectored, RecvResultExt, RecvVectored, Send,
         SendTo, SendToVectored, SendVectored, UpdateBufferLen,
@@ -32,7 +36,7 @@ impl Socket {
     }
 
     #[cfg(feature = "runtime")]
-    pub(crate) fn attach(&self) -> io::Result<()> {
+    pub(crate) fn attach(&self) -> io::Result<Fd> {
         self.attacher.attach(self)
     }
 
@@ -84,8 +88,8 @@ impl Socket {
 
     #[cfg(feature = "runtime")]
     pub async fn connect_async(&self, addr: &SockAddr) -> io::Result<()> {
-        self.attach()?;
-        let op = Connect::new(self.as_raw_fd(), addr.clone());
+        let fd = self.attach()?;
+        let op = Connect::new(fd, addr.clone());
         let (res, _op) = RUNTIME.with(|runtime| runtime.submit(op)).await;
         #[cfg(target_os = "windows")]
         {
@@ -103,8 +107,8 @@ impl Socket {
     pub async fn accept(&self) -> io::Result<(Self, SockAddr)> {
         use std::os::fd::FromRawFd;
 
-        self.attach()?;
-        let op = Accept::new(self.as_raw_fd());
+        let fd = self.attach()?;
+        let op = Accept::new(fd);
         let (res, op) = RUNTIME.with(|runtime| runtime.submit(op)).await;
         let accept_sock = unsafe { Socket2::from_raw_fd(res? as _) };
         accept_sock.set_nonblocking(true)?;
@@ -115,14 +119,14 @@ impl Socket {
 
     #[cfg(all(feature = "runtime", target_os = "windows"))]
     pub async fn accept(&self) -> io::Result<(Self, SockAddr)> {
-        self.attach()?;
+        let fd = self.attach()?;
         let local_addr = self.local_addr()?;
         let accept_sock = Self::new(
             local_addr.domain(),
             self.socket.r#type()?,
             self.socket.protocol()?,
         )?;
-        let op = Accept::new(self.as_raw_fd(), accept_sock.as_raw_fd() as _);
+        let op = Accept::new(fd, accept_sock.as_raw_fd() as _);
         let (res, op) = RUNTIME.with(|runtime| runtime.submit(op)).await;
         res?;
         op.update_context()?;
@@ -132,8 +136,8 @@ impl Socket {
 
     #[cfg(feature = "runtime")]
     pub async fn recv<T: IoBufMut<'static>>(&self, buffer: T) -> BufResult<usize, T> {
-        let ((), buffer) = buf_try!(self.attach(), buffer);
-        let op = Recv::new(self.as_raw_fd(), BufWrapperMut::from(buffer));
+        let (fd, buffer) = buf_try!(self.attach(), buffer);
+        let op = Recv::new(fd, BufWrapperMut::from(buffer));
         RUNTIME
             .with(|runtime| runtime.submit(op))
             .await
@@ -167,8 +171,8 @@ impl Socket {
         &self,
         buffer: VectoredBufWrapper<'static, T>,
     ) -> BufResult<usize, VectoredBufWrapper<'static, T>> {
-        let ((), buffer) = buf_try!(self.attach(), buffer);
-        let op = RecvVectored::new(self.as_raw_fd(), buffer);
+        let (fd, buffer) = buf_try!(self.attach(), buffer);
+        let op = RecvVectored::new(fd, buffer);
         RUNTIME
             .with(|runtime| runtime.submit(op))
             .await
@@ -178,8 +182,8 @@ impl Socket {
 
     #[cfg(feature = "runtime")]
     pub async fn send<T: IoBuf<'static>>(&self, buffer: T) -> BufResult<usize, T> {
-        let ((), buffer) = buf_try!(self.attach(), buffer);
-        let op = Send::new(self.as_raw_fd(), BufWrapper::from(buffer));
+        let (fd, buffer) = buf_try!(self.attach(), buffer);
+        let op = Send::new(fd, BufWrapper::from(buffer));
         RUNTIME
             .with(|runtime| runtime.submit(op))
             .await
@@ -205,8 +209,8 @@ impl Socket {
         &self,
         buffer: VectoredBufWrapper<'static, T>,
     ) -> BufResult<usize, VectoredBufWrapper<'static, T>> {
-        let ((), buffer) = buf_try!(self.attach(), buffer);
-        let op = SendVectored::new(self.as_raw_fd(), buffer);
+        let (fd, buffer) = buf_try!(self.attach(), buffer);
+        let op = SendVectored::new(fd, buffer);
         RUNTIME
             .with(|runtime| runtime.submit(op))
             .await
@@ -218,8 +222,8 @@ impl Socket {
         &self,
         buffer: T,
     ) -> BufResult<(usize, SockAddr), T> {
-        let ((), buffer) = buf_try!(self.attach(), buffer);
-        let op = RecvFrom::new(self.as_raw_fd(), BufWrapperMut::from(buffer));
+        let (fd, buffer) = buf_try!(self.attach(), buffer);
+        let op = RecvFrom::new(fd, BufWrapperMut::from(buffer));
         RUNTIME
             .with(|runtime| runtime.submit(op))
             .await
@@ -234,8 +238,8 @@ impl Socket {
         &self,
         buffer: VectoredBufWrapper<'static, T>,
     ) -> BufResult<(usize, SockAddr), VectoredBufWrapper<'static, T>> {
-        let ((), buffer) = buf_try!(self.attach(), buffer);
-        let op = RecvFromVectored::new(self.as_raw_fd(), buffer);
+        let (fd, buffer) = buf_try!(self.attach(), buffer);
+        let op = RecvFromVectored::new(fd, buffer);
         RUNTIME
             .with(|runtime| runtime.submit(op))
             .await
@@ -250,8 +254,8 @@ impl Socket {
         buffer: T,
         addr: &SockAddr,
     ) -> BufResult<usize, T> {
-        let ((), buffer) = buf_try!(self.attach(), buffer);
-        let op = SendTo::new(self.as_raw_fd(), BufWrapper::from(buffer), addr.clone());
+        let (fd, buffer) = buf_try!(self.attach(), buffer);
+        let op = SendTo::new(fd, BufWrapper::from(buffer), addr.clone());
         RUNTIME
             .with(|runtime| runtime.submit(op))
             .await
@@ -265,8 +269,8 @@ impl Socket {
         buffer: VectoredBufWrapper<'static, T>,
         addr: &SockAddr,
     ) -> BufResult<usize, VectoredBufWrapper<'static, T>> {
-        let ((), buffer) = buf_try!(self.attach(), buffer);
-        let op = SendToVectored::new(self.as_raw_fd(), buffer, addr.clone());
+        let (fd, buffer) = buf_try!(self.attach(), buffer);
+        let op = SendToVectored::new(fd, buffer, addr.clone());
         RUNTIME
             .with(|runtime| runtime.submit(op))
             .await

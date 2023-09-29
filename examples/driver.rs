@@ -9,9 +9,9 @@ use completeio::{
 fn main() {
     let mut driver = Driver::new().unwrap();
     let file = completeio::fs::File::open("Cargo.toml").unwrap();
-    driver.attach(file.as_raw_fd()).unwrap();
+    let fd = driver.attach(file.as_raw_fd()).unwrap();
 
-    let mut op = completeio::op::ReadAt::new(file.as_raw_fd(), 0, Vec::with_capacity(4096));
+    let mut op = completeio::op::ReadAt::new(fd, 0, Vec::with_capacity(4096));
     let mut ops = VecDeque::from([(&mut op, 0).into()]);
     driver.push_queue(&mut ops);
 

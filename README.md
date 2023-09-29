@@ -59,10 +59,10 @@ use completeio::{
 let mut driver = Driver::new().unwrap();
 let file = File::open("Cargo.toml").unwrap();
 // Attach the `RawFd` to driver first.
-driver.attach(file.as_raw_fd()).unwrap();
+let fd = driver.attach(file.as_raw_fd()).unwrap();
 
 // Create operation and push it to the driver.
-let mut op = ReadAt::new(file.as_raw_fd(), 0, Vec::with_capacity(4096));
+let mut op = ReadAt::new(fd, 0, Vec::with_capacity(4096));
 let mut ops = VecDeque::from([(&mut op, 0).into()]);
 driver.push_queue(&mut ops);
 

@@ -45,9 +45,6 @@ pub(crate) use windows_sys::Win32::Networking::WinSock::{
 /// Therefore, both could be seen as fd.
 pub type RawFd = RawHandle;
 
-/// Invalid file descriptor value could be used as an initial value of uninitialized file descriptor
-pub const INVALID_FD: RawFd = unsafe { std::mem::transmute(INVALID_HANDLE_VALUE) };
-
 /// Extracts raw fds.
 pub trait AsRawFd {
     /// Extracts the raw fd.
@@ -109,6 +106,35 @@ impl IntoRawFd for socket2::Socket {
     }
 }
 
+/// Attached file descriptor.
+///
+/// Can't be moved between threads.
+#[derive(Debug, Clone, Copy)]
+pub struct Fd {
+    raw_fd: RawFd,
+    _not_send_not_sync: PhantomData<*const ()>
+}
+
+impl Fd {
+    #[inline]
+    const fn from_raw(raw_fd: RawFd) -> Self {
+        Self { raw_fd, _not_send_not_sync: PhantomData }
+    }
+
+    #[inline]
+    fn as_raw_fd(&self) -> RawFd {
+        self.raw_fd
+    }
+}
+
+/// Fixed fd is aliased to attached fd
+pub type FixedFd = Fd;
+/// FdOrFixed is aliased to attached fd
+pub type FdOrFixed = Fd;
+
+/// Invalid file descriptor value could be used as an initial value of uninitialized file descriptor
+pub const INVALID_FD: FdOrFixed = Fd::from_raw(unsafe { std::mem::transmute(INVALID_HANDLE_VALUE) });
+
 /// Abstraction of IOCP operations.
 pub trait OpCode {
     /// Perform Windows API call.
@@ -144,11 +170,13 @@ pub struct Driver<'arena> {
 impl<'arena> Driver<'arena> {
     /// Create a new IOCP.
     pub fn new() -> io::Result<Self> {
-        Self::with_entries(DEFAULT_CAPACITY as _)
+        Self::with(DEFAULT_CAPACITY as _, 0)
     }
 
-    /// The same as [`Driver::new`].
-    pub fn with_entries(entries: u32) -> io::Result<Self> {
+    /// Create a new IOCP driver with specified entries.
+    ///
+    /// File registration is implemented as attachment.
+    pub fn with(entries: u32, _files_to_register: u32) -> io::Result<Self> {
         let port = syscall!(BOOL, CreateIoCompletionPort(INVALID_HANDLE_VALUE, 0, 0, 0))?;
         let port = unsafe { OwnedHandle::from_raw_handle(port as _) };
         Ok(Self {
@@ -169,7 +197,7 @@ impl<'arena> Driver<'arena> {
             Some(timeout) => timeout.as_millis() as u32,
             None => INFINITE,
         };
-        syscall!(
+        let res = syscall!(
             BOOL,
             GetQueuedCompletionStatusEx(
                 self.port.as_raw_handle() as _,
@@ -179,11 +207,11 @@ impl<'arena> Driver<'arena> {
                 timeout,
                 0,
             )
-        )?;
+        );
         unsafe {
             self.iocp_entries.set_len(recv_count as _);
         }
-        Ok(())
+        res.map(|_| ())
     }
 
     fn create_entry(cancelled: &mut HashSet<usize>, iocp_entry: OVERLAPPED_ENTRY) -> Option<Entry> {
@@ -246,12 +274,17 @@ const TIMER_PENDING: usize = usize::MAX - 2;
 
 impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     #[inline]
-    fn attach(&mut self, fd: RawFd) -> io::Result<()> {
+    fn attach(&mut self, fd: RawFd) -> io::Result<Fd> {
         syscall!(
             BOOL,
             CreateIoCompletionPort(fd as _, self.port.as_raw_handle() as _, 0, 0)
         )?;
-        Ok(())
+        Ok(Fd::from_raw(fd))
+    }
+
+    #[inline]
+    fn register_fd(&mut self, fd: RawFd, _id: u32) -> io::Result<FixedFd> {
+        self.attach(fd)
     }
 
     #[inline]
@@ -324,7 +357,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         #[cfg(feature = "time")]
         let timeout = self.timers.till_next_timer_or_timeout(timeout);
 
-        self.poll_impl(timeout)?;
+        let res = self.poll_impl(timeout);
         #[cfg(feature = "time")]
         self.timers.expire_timers(entries);
 
@@ -337,7 +370,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
             );
         }
 
-        Ok(())
+        res
     }
 }
 
