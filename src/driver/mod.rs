@@ -19,12 +19,15 @@ cfg_if::cfg_if! {
     } else if #[cfg(target_os = "linux")] {
         mod iour;
         pub use iour::*;
-    } else if #[cfg(unix)]{
-        mod mio;
+    } else if #[cfg(any(target_vendor= "apple", target_os = "freebsd", target_os = "dragonfly", target_os = "openbsd", target_os = "netbsd"))] {
+        mod kqueue;
         #[cfg(feature="time")]
         mod time;
-        pub use self::mio::*;
+        pub use self::kqueue::*;
+    } else {
+        compile_error!("unsupported build target");
     }
+
 }
 
 /// An abstract of [`Driver`].

@@ -1,7 +1,6 @@
 #[cfg(feature = "allocator_api")]
 use std::alloc::Allocator;
 use std::{
-    collections::HashSet,
     io,
     marker::PhantomData,
     os::windows::prelude::{
@@ -17,6 +16,7 @@ use windows_sys::Win32::{
         RtlNtStatusToDosError, ERROR_HANDLE_EOF, ERROR_IO_INCOMPLETE, ERROR_NO_DATA,
         FACILITY_NTWIN32, INVALID_HANDLE_VALUE, NTSTATUS, STATUS_PENDING, STATUS_SUCCESS,
     },
+    Storage::FileSystem::{SetFileCompletionNotificationModes},
     System::{
         SystemServices::ERROR_SEVERITY_ERROR,
         Threading::INFINITE,
@@ -24,6 +24,7 @@ use windows_sys::Win32::{
             CreateIoCompletionPort, GetQueuedCompletionStatusEx, PostQueuedCompletionStatus,
             OVERLAPPED, OVERLAPPED_ENTRY,
         },
+        WindowsProgramming::{FILE_SKIP_COMPLETION_PORT_ON_SUCCESS, FILE_SKIP_SET_EVENT_ON_HANDLE}
     },
 };
 
@@ -161,7 +162,6 @@ pub struct Driver<'arena> {
     port: OwnedHandle,
     squeue: Vec<OpObject<'arena>>,
     iocp_entries: Vec<OVERLAPPED_ENTRY>,
-    cancelled: HashSet<usize>,
     #[cfg(feature = "time")]
     timers: TimerWheel,
     _lifetime: PhantomData<&'arena ()>,
@@ -183,7 +183,6 @@ impl<'arena> Driver<'arena> {
             port,
             squeue: Vec::with_capacity(entries as usize),
             iocp_entries: Vec::with_capacity(entries as usize),
-            cancelled: HashSet::default(),
             #[cfg(feature = "time")]
             timers: TimerWheel::with_capacity(16),
             _lifetime: PhantomData,
@@ -214,13 +213,10 @@ impl<'arena> Driver<'arena> {
         res.map(|_| ())
     }
 
-    fn create_entry(cancelled: &mut HashSet<usize>, iocp_entry: OVERLAPPED_ENTRY) -> Option<Entry> {
+    fn create_entry(iocp_entry: OVERLAPPED_ENTRY) -> Entry {
         let transferred = iocp_entry.dwNumberOfBytesTransferred;
         let overlapped_ptr = iocp_entry.lpOverlapped;
         let overlapped = unsafe { &*overlapped_ptr.cast::<Overlapped>() };
-        if cancelled.remove(&overlapped.user_data) {
-            return None;
-        }
         let res = if matches!(
             overlapped.base.Internal as NTSTATUS,
             STATUS_SUCCESS | STATUS_PENDING
@@ -233,7 +229,7 @@ impl<'arena> Driver<'arena> {
                 _ => Err(io::Error::from_raw_os_error(error as _)),
             }
         };
-        Some(Entry::new(overlapped.user_data, res))
+        Entry::new(overlapped.user_data, res)
     }
 }
 
@@ -279,6 +275,12 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
             BOOL,
             CreateIoCompletionPort(fd as _, self.port.as_raw_handle() as _, 0, 0)
         )?;
+        let flags = u8::try_from(FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE).expect("within u8 range");
+
+        syscall!(
+            BOOL,
+            SetFileCompletionNotificationModes(fd as _, flags)
+        )?;
         Ok(Fd::from_raw(fd))
     }
 
@@ -289,7 +291,10 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
 
     #[inline]
     fn try_cancel(&mut self, user_data: usize) -> Result<(), ()> {
-        self.cancelled.insert(user_data);
+        if let Some(pos) = self.squeue.iter().position(|operation| operation.user_data() == user_data) {
+            // we assume cancellations are rare
+            let _ = self.squeue.remove(pos);
+        }
         Ok(())
     }
 
@@ -337,20 +342,18 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     ) -> io::Result<()> {
         for mut operation in self.squeue.drain(..) {
             let user_data = operation.user_data();
-            if !self.cancelled.remove(&user_data) {
-                // we require Unpin buffers - so no need to pin
-                let op = operation.opcode();
-                let result = op.operate(user_data);
-                match result {
-                    #[cfg(feature = "time")]
-                    Poll::Ready(Ok(TIMER_PENDING)) => {
-                        self.timers.insert(user_data, op.timer_delay())
-                    }
-                    Poll::Ready(result) => {
-                        post_driver_raw(self.port.as_raw_handle(), result, op.overlapped())?;
-                    }
-                    _ => {}
+            // we require Unpin buffers - so no need to pin
+            let op = operation.opcode();
+            let result = op.operate(user_data);
+            match result {
+                #[cfg(feature = "time")]
+                Poll::Ready(Ok(TIMER_PENDING)) => {
+                    self.timers.insert(user_data, op.timer_delay());
                 }
+                Poll::Ready(result) => {
+                    entries.extend(Some(Entry::new(user_data, result)));
+                }
+                _ => {}
             }
         }
 
@@ -361,14 +364,10 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         #[cfg(feature = "time")]
         self.timers.expire_timers(entries);
 
-        {
-            let cancelled = &mut self.cancelled;
-            entries.extend(
-                self.iocp_entries
-                    .drain(..)
-                    .filter_map(|e| Self::create_entry(cancelled, e)),
-            );
-        }
+        entries.extend(
+            self.iocp_entries
+                .drain(..)
+                .filter_map(|e| Some(Self::create_entry(e))));
 
         res
     }
