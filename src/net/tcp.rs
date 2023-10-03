@@ -25,18 +25,20 @@ use crate::{
 /// use completeio::net::{TcpListener, TcpStream};
 /// use socket2::SockAddr;
 ///
-/// let addr: SockAddr = "127.0.0.1:2345".parse::<SocketAddr>().expect("parsed").into();
+/// let addr: SockAddr = "127.0.0.1:0".parse::<SocketAddr>().expect("parsed").into();
 ///
 /// let listener = TcpListener::bind(&addr).expect("binded");
 ///
 /// completeio::task::block_on(async move {
-///     let tx_fut = TcpStream::connect(&addr);
-///
+///     let listener_addr = listener.local_addr().expect("listener binded");
 ///     let rx_fut = listener.accept();
+///     let tx_fut = TcpStream::connect(&listener_addr);
 ///
-///     let (tx, (rx, _)) = futures_util::try_join!(tx_fut, rx_fut).expect("connected and accepted");
+///     let ((rx, _sock_addr), tx) = futures_util::try_join!(rx_fut, tx_fut).expect("connected and accepted");
 ///
-///     tx.send_all("test").await.0.expect("sent");
+///
+///     let (res, _buf) = tx.send_all("test").await;
+///     res.expect("sent");
 ///
 ///     let (_, buf) = rx.recv_exact(Vec::with_capacity(4)).await;
 ///
