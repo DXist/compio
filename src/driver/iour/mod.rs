@@ -218,16 +218,9 @@ impl<'arena> Driver<'arena> {
         });
         entries.extend(completed_entries);
     }
-}
-
-impl<'arena> CompleteIo<'arena> for Driver<'arena> {
-    #[inline]
-    fn attach(&mut self, fd: RawFd) -> io::Result<Fd> {
-        Ok(Fd::from_raw(fd))
-    }
 
     #[inline]
-    fn register_fd(&mut self, fd: RawFd, id: u32) -> io::Result<FixedFd> {
+    fn register_fd_impl(&mut self, fd: RawFd, id: u32) -> io::Result<()> {
         debug_assert!(self.files_update_fds.len() > 0, "files_to_register is nonzero");
         debug_assert!(( id as usize ) < self.files_update_fds.len(), "registered fixed file index is within [0; files_to_register) range");
 
@@ -257,7 +250,24 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
                 self.files_update_fds[id as usize] = fd;
             }
         }
-        Ok(FixedFd::from_offset(id))
+        Ok(())
+    }
+}
+
+impl<'arena> CompleteIo<'arena> for Driver<'arena> {
+    #[inline]
+    fn attach(&mut self, fd: RawFd) -> io::Result<Fd> {
+        Ok(Fd::from_raw(fd))
+    }
+
+    #[inline]
+    fn register_fd(&mut self, fd: RawFd, id: u32) -> io::Result<FixedFd> {
+        self.register_fd_impl(fd, id).map(|_| FixedFd::from_offset(id))
+    }
+
+    #[inline]
+    fn unregister_fd(&mut self, fixed_fd: FixedFd) -> io::Result<()> {
+        self.register_fd_impl(-1, fixed_fd.as_offset())
     }
 
     #[inline]

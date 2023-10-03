@@ -270,6 +270,11 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     }
 
     #[inline]
+    fn unregister_fd(&mut self, _fixed_fd: FixedFd) -> io::Result<()> {
+        Ok(())
+    }
+
+    #[inline]
     fn try_cancel(&mut self, user_data: usize) -> Result<(), ()> {
         // we assume cancellations are rare
         if let Some(pos) = self.squeue.iter().position(|operation| operation.user_data() == user_data) {

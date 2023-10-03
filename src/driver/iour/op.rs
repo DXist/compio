@@ -13,7 +13,7 @@ use libc::sockaddr_storage;
 pub use crate::driver::unix::op::*;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut},
-    driver::{OpCode, FdOrFixed, Fd, FixedFd},
+    driver::{OpCode, FdOrFixed, Fd},
 };
 
 macro_rules! apply_to_fd_or_fixed {
@@ -150,12 +150,5 @@ impl OpCode for Timeout {
 impl OpCode for Fd {
     fn create_entry(&mut self) -> Entry {
         opcode::Close::new(types::Fd(self.as_raw_fd())).build()
-    }
-}
-
-/// Close fixed file descriptor.
-impl OpCode for FixedFd {
-    fn create_entry(&mut self) -> Entry {
-        opcode::Close::new(types::Fixed(self.as_offset())).build()
     }
 }

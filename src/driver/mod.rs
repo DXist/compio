@@ -130,8 +130,14 @@ pub trait CompleteIo<'arena> {
     /// Provided fd will override previously registered fd.
     /// * kqueue: it will do nothing.
     ///
-    /// To unregister fd issue `Close` operation using FixedFd as OpCode value.
+    /// To unregister fd `unregister_fd` method.
     fn register_fd(&mut self, fd: RawFd, id: u32) -> io::Result<FixedFd>;
+
+    /// Unregister fixed fd.
+    ///
+    /// io_uring: will unregister the provided fixed fd on kernel side
+    /// IOCP/kqueue: will do nothing
+    fn unregister_fd(&mut self, fixed_fd: FixedFd) -> io::Result<()>;
 
     /// Try to cancel an operation with the pushed user-defined data.
     ///

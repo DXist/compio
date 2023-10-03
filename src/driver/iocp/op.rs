@@ -701,7 +701,7 @@ fn get_sockopt_error(fd: RawFd) -> Result<(), i32> {
 
 /// Close file descriptor.
 ///
-/// io_uring: it either closes in async fashion regular file descriptor or unregisters fixed file descriptor.
+/// io_uring: it closes in async fashion regular file descriptor
 /// kqueue: runs `close` syscall
 /// IOCP: it checks whether file is socket and executes either `closesocket` or `CloseHandle`
 impl OpCode for Fd {

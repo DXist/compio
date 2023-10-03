@@ -66,6 +66,7 @@ fn attach_read_multiple_and_close_attached() {
         e.into_result().unwrap();
     }
 
+    // close attached fd
     let mut fd = fd;
     driver.try_push(Operation::new(&mut fd, 42)).unwrap_or_else(|_| panic!("queue is full"));
 
@@ -112,16 +113,9 @@ fn register_read_multiple_and_close_fixed() {
         e.into_result().unwrap();
     }
 
-    let mut fixed_fd = fixed_fd;
-    driver.try_push(Operation::new(&mut fixed_fd, 42)).unwrap_or_else(|_| panic!("queue is full"));
+    driver.unregister_fd(fixed_fd).unwrap();
 
-    let mut entries = ArrayVec::<Entry, 1>::new();
+    let mut entries = ArrayVec::<Entry, 0>::new();
 
-    while entries.len() < 1 {
-        unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }
-            .unwrap();
-    }
-    for e in entries {
-        e.into_result().unwrap();
-    }
+    unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }.unwrap();
 }
