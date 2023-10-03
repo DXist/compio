@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 description = "Completion based IO drivers and async runtime"
 categories = ["asynchronous", "filesystem", "network-programming"]
-keywords = ["io-uring", "fs", "iocp", "net", "async"]
+keywords = ["io-uring", "kqueue", "iocp", "net", "async"]
 repository = "https://github.com/DXist/completeio"
 
 [package.metadata.docs.rs]
@@ -23,7 +23,6 @@ targets = [
     "x86_64-pc-windows-msvc",
     "x86_64-unknown-dragonfly",
     "x86_64-unknown-freebsd",
-    "x86_64-unknown-illumos",
     "x86_64-unknown-linux-gnu",
     "x86_64-unknown-netbsd",
     "x86_64-unknown-openbsd",
@@ -76,11 +75,12 @@ windows-sys = { version = "0.48", features = ["Win32_Security_Authorization"] }
 io-uring = "0.6.2"
 libc = "0.2"
 
-# Other platform dependencies
-[target.'cfg(all(not(target_os = "linux"), unix))'.dependencies]
-mio = { version = "0.8", features = ["os-ext"] }
+# BSD-like platform dependencies
+[target.'cfg(any(target_vendor= "apple", target_os = "freebsd", target_os = "dragonfly", target_os = "openbsd", target_os = "netbsd"))'.dependencies]
+rustix = { version = "0.38", features = ["event"] }
 libc = "0.2"
 boot-time = "0.1"
+bit-set = "0.5"
 
 [features]
 default = ["time"]

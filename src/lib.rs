@@ -116,24 +116,19 @@ macro_rules! syscall {
     ($fn: ident ( $($arg: expr),* $(,)* ) ) => {{
         #[allow(unused_unsafe)]
         let res = unsafe { ::libc::$fn($($arg, )*) };
-        if res == -1 {
+        if res < 0 {
             Err(::std::io::Error::last_os_error())
         } else {
             Ok(res)
         }
     }};
-    // The below branches are used by mio driver.
-    (break $fn: ident ( $($arg: expr),* $(,)* )) => {
-        $crate::syscall!( $fn ( $($arg, )* )).map(
-            |res| ::std::ops::ControlFlow::Break(res as usize)
-        )
-    };
-    ($fn: ident ( $($arg: expr),* $(,)* ) or $f:ident($fd:expr)) => {
+    // The below branch are used by kqueue driver.
+    (maybe_block $fn: ident ( $($arg: expr),* $(,)* )) => {
         match $crate::syscall!( $fn ( $($arg, )* )) {
-            Ok(fd) => Ok($crate::driver::Decision::Completed(fd as usize)),
             Err(e) if e.kind() == ::std::io::ErrorKind::WouldBlock || e.raw_os_error() == Some(::libc::EINPROGRESS)
-                   => Ok($crate::driver::Decision::$f($fd)),
-            Err(e) => Err(e),
+                   => None,
+            Err(e) => Some(Err(e)),
+            Ok(ok) => Some(Ok(usize::try_from(ok).expect("non negative")))
         }
     };
 }

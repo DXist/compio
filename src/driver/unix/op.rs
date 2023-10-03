@@ -70,12 +70,21 @@ impl<'arena, T: IoBuf<'arena>> IntoInner for WriteAt<'arena, T> {
 pub struct Connect {
     pub(crate) fd: FdOrFixed,
     pub(crate) addr: SockAddr,
+    #[cfg(not(target_os="linux"))]
+    pub(crate) initiated: bool,
 }
 
 impl Connect {
     /// Create [`Connect`]. `fd` should be bound.
     pub fn new(fd: impl IntoFdOrFixed<Target=FdOrFixed>, addr: SockAddr) -> Self {
-        Self { fd: fd.into(), addr }
+        #[cfg(target_os="linux")]
+        let this = Self { fd: fd.into(), addr };
+        #[cfg(not(target_os="linux"))]
+        let this = {
+            let initiated = false;
+            Self { fd: fd.into(), addr, initiated }
+        };
+        this
     }
 }
 
@@ -118,7 +127,7 @@ impl Sync {
     ///
     /// * IOCP: it is synchronized operation, and calls `FlushFileBuffers`.
     /// * io-uring: `fdatasync` if `datasync` specified, otherwise `fsync`.
-    /// * mio: it is synchronized `fdatasync` or `fsync`.
+    /// * kqueue: it is synchronized `fdatasync` or `fsync`.
     pub fn new(fd: impl IntoFdOrFixed<Target=FdOrFixed>, datasync: bool) -> Self {
         Self { fd: fd.into(), datasync }
     }

@@ -114,7 +114,7 @@ pub trait CompleteIo<'arena> {
     /// * IOCP: it will be attached to the completion port. An fd could only be attached to one
     ///   driver, and could only be attached once, even if you `try_clone` it. It will cause
     ///   unexpected result to attach the handle with one driver and push an op to another driver.
-    /// * io-uring/mio: it will do nothing and return `Ok(Fd)`
+    /// * io-uring/kqueue: it will do nothing and return `Ok(Fd)`
     fn attach(&mut self, fd: RawFd) -> io::Result<Fd>;
 
     /// Attach fd to the driver and register it as fixed file descriptor with the provided fixed id.
@@ -127,7 +127,7 @@ pub trait CompleteIo<'arena> {
     /// Async operation uses reserved `u64::MAX` user_data key. Driver handles completion.
     /// Provided fd will override previously registered fd.
     /// To unregister fd issue async `Close` operation.
-    /// * mio: it will do nothing.
+    /// * kqueue: it will do nothing.
     fn register_fd(&mut self, fd: RawFd, id: u32) -> io::Result<FixedFd>;
 
     /// Try to cancel an operation with the pushed user-defined data.
@@ -233,8 +233,13 @@ impl<'a> OpObject<'a> {
         Self { op, user_data }
     }
 
-    /// Get the opcode.
+    /// Get the mut opcode.
     pub fn opcode(&mut self) -> &mut dyn OpCode {
+        self.op
+    }
+
+    /// Get the opcode ref.
+    pub fn opcode_ref(&self) -> &dyn OpCode {
         self.op
     }
 

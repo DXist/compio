@@ -161,28 +161,25 @@ impl<'arena> Driver<'arena> {
 
     // Submit and wait for completions until `timeout` is passed
     fn submit(&mut self, timeout: Option<Duration>) -> io::Result<()> {
-        loop {
-            let res = match timeout {
-                None => self.inner.submit_and_wait(1),
-                Some(Duration::ZERO) => self.inner.submit(),
-                Some(duration) => {
-                    // Wait till timeout.
-                    let timespec = timespec(duration);
-                    let args = SubmitArgs::new().timespec(&timespec);
-                    self.inner.submitter().submit_with_args(1, &args)
-                }
-            };
-            match res {
-                Ok(_) => break Ok(()),
-                Err(e) => match e.raw_os_error() {
-                    // retry on interrupt
-                    Some(libc::EINTR) => continue,
-                    Some(libc::ETIME) => break Err(io::Error::from_raw_os_error(libc::ETIMEDOUT)),
-                    // break to process completions
-                    Some(libc::EBUSY) | Some(libc::EAGAIN) => break Ok(()),
-                    _ => break Err(e),
-                },
+        let res = match timeout {
+            None => self.inner.submit_and_wait(1),
+            Some(Duration::ZERO) => self.inner.submit(),
+            Some(duration) => {
+                // Wait till timeout.
+                let timespec = timespec(duration);
+                let args = SubmitArgs::new().timespec(&timespec);
+                self.inner.submitter().submit_with_args(1, &args)
             }
+        };
+        match res {
+            Ok(_) => Ok(()),
+            Err(e) => match e.raw_os_error() {
+                // timeouts are expected
+                Some(libc::ETIME) |
+                // break to process completions
+                Some(libc::EBUSY) | Some(libc::EAGAIN) => Ok(()),
+                _ => Err(e),
+            },
         }
     }
 

@@ -296,7 +296,7 @@ impl Sync {
     ///
     /// * IOCP: it is synchronized operation, and calls `FlushFileBuffers`.
     /// * io-uring: `fdatasync` if `datasync` specified, otherwise `fsync`.
-    /// * mio: it is synchronized `fdatasync` or `fsync`.
+    /// * kqueue: it is synchronized `fdatasync` or `fsync`.
     pub fn new(fd: Fd, datasync: bool) -> Self {
         Self {
             fd,

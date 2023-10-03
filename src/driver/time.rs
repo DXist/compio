@@ -81,6 +81,13 @@ impl TimerWheel {
     }
 }
 
+impl Extend<(usize, Duration)> for TimerWheel {
+    fn extend<T>(&mut self, iter: T) where T: IntoIterator<Item=(usize, Duration)> {
+        let now = Instant::now();
+        self.0.extend(iter.into_iter().map(|(key, delay)| Timer { key, deadline: now + delay }));
+    }
+}
+
 /// Timeout operation completes after the given relative timeout duration.
 ///
 /// If supported by platform timeout operation will take into account the time
@@ -88,13 +95,11 @@ impl TimerWheel {
 /// CLOCK_MONOTONIC is used.
 ///
 /// Only io_uring driver supports waiting using CLOCK_BOOTTIME clock.
-#[cfg(feature = "time")]
 #[repr(transparent)]
 pub struct Timeout {
     pub(crate) delay: std::time::Duration,
 }
 
-#[cfg(feature = "time")]
 impl Timeout {
     /// Create `Timeout` with the provided duration.
     pub fn new(delay: std::time::Duration) -> Self {

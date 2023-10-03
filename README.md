@@ -4,7 +4,7 @@
 [![crates.io](https://img.shields.io/crates/v/completeio)](https://crates.io/crates/completeio)
 [![docs.rs](https://img.shields.io/badge/docs.rs-completeio-latest)](https://docs.rs/completeio)
 
-A thread-per-core Rust IO drivers and async runtime backed by IOCP/io_uring/mio.
+A thread-per-core Rust IO drivers and async runtime backed by IOCP/io_uring/kqueue.
 The name comes from "completion-based IO".
 
 This repository is a fork of [compio](https://github.com/compio-rs/compio).

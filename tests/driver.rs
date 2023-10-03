@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, io, time::Duration};
+use std::{collections::VecDeque, time::Duration};
 
 use arrayvec::ArrayVec;
 use completeio::{
@@ -33,8 +33,7 @@ fn timeout() {
     let mut entries = ArrayVec::<Entry, 1>::new();
     let res =
         unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(1)), &mut entries) };
-    let err = res.unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::TimedOut)
+    res.unwrap();
 }
 
 #[test]

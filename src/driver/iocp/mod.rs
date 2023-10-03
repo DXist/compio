@@ -210,7 +210,11 @@ impl<'arena> Driver<'arena> {
         unsafe {
             self.iocp_entries.set_len(recv_count as _);
         }
-        res.map(|_| ())
+        match res.map(|_| ()) {
+            // timeouts are expected
+            Err(err) if err.kind() == io::ErrorKind::TimedOut => Ok(()),
+            res => res
+        }
     }
 
     fn create_entry(iocp_entry: OVERLAPPED_ENTRY) -> Entry {
