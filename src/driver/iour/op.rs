@@ -14,6 +14,7 @@ pub use crate::driver::unix::op::*;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut},
     driver::{OpCode, FdOrFixed},
+    op::Close
 };
 
 macro_rules! apply_to_fd_or_fixed {
@@ -143,5 +144,11 @@ impl OpCode for Timeout {
         opcode::Timeout::new(&self.timespec as *const Timespec)
             .flags(Self::FLAGS)
             .build()
+    }
+}
+
+impl OpCode for Close {
+    fn create_entry(&mut self) -> Entry {
+        apply_to_fd_or_fixed!(opcode::Close::new; self.fd).build()
     }
 }

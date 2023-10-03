@@ -3,8 +3,7 @@ use std::marker::PhantomData;
 use libc::{sockaddr_storage, socklen_t};
 use socket2::SockAddr;
 
-#[cfg(doc)]
-use crate::op::*;
+use crate::op::Close;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IntoInner, IoBuf, IoBufMut},
     driver::{FdOrFixed, unix::IntoFdOrFixed},
@@ -280,5 +279,12 @@ impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendToImpl<'arena, T> {
 
     fn into_inner(self) -> Self::Inner {
         self.buffer
+    }
+}
+
+impl Close {
+    /// Create Close
+    pub fn new(fd: impl IntoFdOrFixed<Target=FdOrFixed>) -> Self {
+        Self { fd: fd.into() }
     }
 }

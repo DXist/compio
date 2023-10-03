@@ -14,7 +14,7 @@ pub use crate::driver::op::{
 };
 use crate::{
     buf::{AsIoSlicesMut, BufWrapperMut, IoBufMut, VectoredBufWrapper},
-    driver::{sockaddr_storage, socklen_t},
+    driver::{sockaddr_storage, socklen_t, FdOrFixed},
     BufResult,
 };
 
@@ -115,3 +115,12 @@ pub type RecvFromVectored<'arena, T> = RecvFromImpl<'arena, VectoredBufWrapper<'
 pub type SendTo<'arena, T> = SendToImpl<'arena, T>;
 /// Send data to address with vectored buffer.
 pub type SendToVectored<'arena, T> = SendToImpl<'arena, VectoredBufWrapper<'arena, T>>;
+
+/// Close file descriptor.
+///
+/// On io_uring it either closes in async fashion regular file descriptor or unregisters fixed file descriptor.
+///
+/// On Windows it checks whether file is socket and executes either `closesocket` or `CloseHandle`
+pub struct Close {
+    pub(crate) fd: FdOrFixed,
+}

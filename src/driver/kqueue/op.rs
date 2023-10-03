@@ -5,6 +5,7 @@ pub use crate::driver::time::Timeout;
 pub use crate::driver::unix::op::*;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut},
+    op::Close,
     driver::{OpCode},
     syscall,
 };
@@ -205,5 +206,15 @@ impl OpCode for Timeout {
     #[cfg(feature = "time")]
     fn timer_delay(&self) -> std::time::Duration {
         self.delay
+    }
+}
+
+impl OpCode for Close {
+    fn operate(&mut self) -> Option<io::Result<usize>> {
+        Some(syscall!(close(self.fd.as_raw_fd())).map(|ok| usize::try_from(ok).expect("non negative")))
+    }
+
+    fn as_event(&self, _: usize) -> Event {
+        unreachable!("Close operation should complete in one shot")
     }
 }

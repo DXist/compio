@@ -15,14 +15,14 @@ use windows_sys::{
     Win32::{
         Foundation::{
             GetLastError, ERROR_HANDLE_EOF, ERROR_IO_INCOMPLETE, ERROR_IO_PENDING, ERROR_NO_DATA,
-            ERROR_PIPE_CONNECTED,
+            ERROR_PIPE_CONNECTED, CloseHandle
         },
         Networking::WinSock::{
-            setsockopt, socklen_t, WSAIoctl, WSARecv, WSARecvFrom, WSASend, WSASendTo,
+            setsockopt, getsockopt, socklen_t, WSAIoctl, WSARecv, WSARecvFrom, WSASend, WSASendTo,
             LPFN_ACCEPTEX, LPFN_CONNECTEX, LPFN_GETACCEPTEXSOCKADDRS,
             SIO_GET_EXTENSION_FUNCTION_POINTER, SOCKADDR, SOCKADDR_STORAGE, SOL_SOCKET,
             SO_UPDATE_ACCEPT_CONTEXT, SO_UPDATE_CONNECT_CONTEXT, WSAID_ACCEPTEX, WSAID_CONNECTEX,
-            WSAID_GETACCEPTEXSOCKADDRS,
+            WSAID_GETACCEPTEXSOCKADDRS, SO_ERROR, WSAENOTSOCK, closesocket
         },
         Storage::FileSystem::{FlushFileBuffers, ReadFile, WriteFile},
         System::{Pipes::ConnectNamedPipe, IO::OVERLAPPED},
@@ -35,7 +35,8 @@ use crate::driver::iocp::TIMER_PENDING;
 pub use crate::driver::time::Timeout;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IntoInner, IoBuf, IoBufMut},
-    driver::{iocp::Overlapped, OpCode, Fd, RawFd},
+    driver::{iocp::Overlapped, OpCode, Fd, RawFd, FdOrFixed},
+    op::Close,
     syscall,
 };
 
@@ -284,7 +285,6 @@ pub struct Sync {
     pub(crate) fd: Fd,
     #[allow(dead_code)]
     pub(crate) datasync: bool,
-    pub(super) overlapped: Overlapped,
 }
 
 impl Sync {
@@ -301,10 +301,10 @@ impl Sync {
         Self {
             fd,
             datasync,
-            overlapped: Overlapped::new(usize::MAX),
         }
     }
 }
+
 impl OpCode for Sync {
     unsafe fn operate(&mut self, _user_data: usize) -> Poll<io::Result<usize>> {
         let res = FlushFileBuffers(self.fd.as_raw_fd() as _);
@@ -312,7 +312,7 @@ impl OpCode for Sync {
     }
 
     fn overlapped(&mut self) -> &mut OVERLAPPED {
-        &mut self.overlapped.base
+        unimplemented!("FlushFileBuffers is synchonous")
     }
 }
 
@@ -670,5 +670,75 @@ impl OpCode for Timeout {
     #[cfg(feature = "time")]
     fn timer_delay(&self) -> std::time::Duration {
         self.delay
+    }
+}
+
+fn get_sockopt_error(fd: RawFd) -> Result<(), i32> {
+    let mut err_code = 0;
+    let mut err_len = std::mem::size_of::<i32>() as i32;
+
+    let rc = unsafe { getsockopt(
+        fd as _,
+        SOL_SOCKET,
+        SO_ERROR,
+        &mut err_code as *mut _ as *mut u8,
+        &mut err_len as *mut _,
+    ) };
+
+    debug_assert!(err_len == 4);
+    if rc !=0 {
+        Err(rc)
+    }
+    else {
+        if err_code == 0 {
+            Ok(())
+        }
+        else {
+            Err(err_code)
+        }
+    }
+}
+
+impl Close {
+    /// Create Close
+    pub fn new(fd: FdOrFixed) -> Self {
+        Self { fd }
+    }
+}
+
+impl OpCode for Close {
+    unsafe fn operate(&mut self, _user_data: usize) -> Poll<io::Result<usize>> {
+        let fd = self.fd.as_raw_fd();
+        let res = get_sockopt_error(fd);
+        let result = match res {
+            Err(WSAENOTSOCK) => {
+                // close file handle
+                let closed = CloseHandle(self.fd.as_raw_fd() as _);
+                if closed == 0 {
+                    Err(std::io::Error::last_os_error())
+                }
+                else {
+                    Ok(0)
+                }
+            },
+            Err(_) => {
+                Err(std::io::Error::last_os_error())
+            },
+            Ok(()) => {
+                // close socket
+                let rc = closesocket(self.fd.as_raw_fd() as _);
+                if rc != 0 {
+                    Err(std::io::Error::last_os_error())
+                }
+                else {
+                    Ok(0)
+                }
+            }
+        };
+        Poll::Ready(result)
+    }
+
+    fn overlapped(&mut self) -> &mut OVERLAPPED {
+        unimplemented!("Close is synchonous")
     }
 }

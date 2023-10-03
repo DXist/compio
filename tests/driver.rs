@@ -4,7 +4,7 @@ use arrayvec::ArrayVec;
 use completeio::{
     driver::{AsRawFd, CompleteIo, Driver, Entry, Operation},
     fs::File,
-    op::ReadAt,
+    op::{ReadAt, Close},
 };
 
 #[test]
@@ -37,7 +37,7 @@ fn timeout() {
 }
 
 #[test]
-fn attach_read_multiple() {
+fn attach_read_multiple_and_close_attached() {
     const TASK_LEN: usize = 3;
 
     let mut driver = Driver::new().unwrap();
@@ -62,10 +62,20 @@ fn attach_read_multiple() {
         unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }
             .unwrap();
     }
+
+    let mut close = Close::new(fd);
+    driver.try_push(Operation::new(&mut close, 42)).unwrap_or_else(|_| panic!("queue is full"));
+
+    let mut entries = ArrayVec::<Entry, 1>::new();
+
+    while entries.len() < 1 {
+        unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }
+            .unwrap();
+    }
 }
 
 #[test]
-fn register_read_multiple() {
+fn register_read_multiple_and_close_fixed() {
     const TASK_LEN: usize = 3;
     const ENTRIES: u32 = 1024;
     const FILES_TO_REGISTER: u32 = 64;
@@ -89,6 +99,15 @@ fn register_read_multiple() {
 
     let mut entries = ArrayVec::<Entry, TASK_LEN>::new();
     while entries.len() < TASK_LEN {
+        unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }
+            .unwrap();
+    }
+    let mut close = Close::new(fixed_fd);
+    driver.try_push(Operation::new(&mut close, 42)).unwrap_or_else(|_| panic!("queue is full"));
+
+    let mut entries = ArrayVec::<Entry, 1>::new();
+
+    while entries.len() < 1 {
         unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }
             .unwrap();
     }
