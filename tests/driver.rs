@@ -4,7 +4,7 @@ use arrayvec::ArrayVec;
 use completeio::{
     driver::{AsRawFd, CompleteIo, Driver, Entry, Operation},
     fs::File,
-    op::{ReadAt, Close},
+    op::ReadAt,
 };
 
 #[test]
@@ -63,8 +63,8 @@ fn attach_read_multiple_and_close_attached() {
             .unwrap();
     }
 
-    let mut close = Close::new(fd);
-    driver.try_push(Operation::new(&mut close, 42)).unwrap_or_else(|_| panic!("queue is full"));
+    let mut fd = fd;
+    driver.try_push(Operation::new(&mut fd, 42)).unwrap_or_else(|_| panic!("queue is full"));
 
     let mut entries = ArrayVec::<Entry, 1>::new();
 
@@ -102,8 +102,9 @@ fn register_read_multiple_and_close_fixed() {
         unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }
             .unwrap();
     }
-    let mut close = Close::new(fixed_fd);
-    driver.try_push(Operation::new(&mut close, 42)).unwrap_or_else(|_| panic!("queue is full"));
+
+    let mut fixed_fd = fixed_fd;
+    driver.try_push(Operation::new(&mut fixed_fd, 42)).unwrap_or_else(|_| panic!("queue is full"));
 
     let mut entries = ArrayVec::<Entry, 1>::new();
 

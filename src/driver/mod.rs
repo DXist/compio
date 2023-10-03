@@ -115,6 +115,8 @@ pub trait CompleteIo<'arena> {
     ///   driver, and could only be attached once, even if you `try_clone` it. It will cause
     ///   unexpected result to attach the handle with one driver and push an op to another driver.
     /// * io-uring/kqueue: it will do nothing and return `Ok(Fd)`
+    ///
+    /// To close fd issue `Close` operation using Fd as OpCode value.
     fn attach(&mut self, fd: RawFd) -> io::Result<Fd>;
 
     /// Attach fd to the driver and register it as fixed file descriptor with the provided fixed id.
@@ -126,8 +128,9 @@ pub trait CompleteIo<'arena> {
     ///     * or in sync style using a syscall in other cases
     /// Async operation uses reserved `u64::MAX` user_data key. Driver handles completion.
     /// Provided fd will override previously registered fd.
-    /// To unregister fd issue async `Close` operation.
     /// * kqueue: it will do nothing.
+    ///
+    /// To unregister fd issue `Close` operation using FixedFd as OpCode value.
     fn register_fd(&mut self, fd: RawFd, id: u32) -> io::Result<FixedFd>;
 
     /// Try to cancel an operation with the pushed user-defined data.

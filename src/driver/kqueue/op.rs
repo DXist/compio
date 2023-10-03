@@ -5,8 +5,7 @@ pub use crate::driver::time::Timeout;
 pub use crate::driver::unix::op::*;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut},
-    op::Close,
-    driver::{OpCode},
+    driver::{OpCode, Fd},
     syscall,
 };
 use rustix::event::kqueue::{Event, EventFilter, EventFlags};
@@ -209,9 +208,14 @@ impl OpCode for Timeout {
     }
 }
 
-impl OpCode for Close {
+/// Close file descriptor.
+///
+/// io_uring: it either closes in async fashion regular file descriptor or unregisters fixed file descriptor.
+/// kqueue: runs `close` syscall
+/// IOCP: it checks whether file is socket and executes either `closesocket` or `CloseHandle`
+impl OpCode for Fd {
     fn operate(&mut self) -> Option<io::Result<usize>> {
-        Some(syscall!(close(self.fd.as_raw_fd())).map(|ok| usize::try_from(ok).expect("non negative")))
+        Some(syscall!(close(self.as_raw_fd())).map(|ok| usize::try_from(ok).expect("non negative")))
     }
 
     fn as_event(&self, _: usize) -> Event {
