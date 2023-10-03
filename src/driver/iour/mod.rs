@@ -241,6 +241,8 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
                 self.inner.submitter().register_files_update(id, &[fd])?;
             }
             (false, FilesUpdateState::NoUpdateInProgress) => {
+                // set the initial file update
+                self.files_update_fds[id as usize] = fd;
                 // create and push update operation for all registered file descriptors
                 let len = u32::try_from(self.files_update_fds.len()).expect("in range");
                 let fds_ptr = self.files_update_fds.as_ptr();

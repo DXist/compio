@@ -62,6 +62,9 @@ fn attach_read_multiple_and_close_attached() {
         unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }
             .unwrap();
     }
+    for e in entries {
+        e.into_result().unwrap();
+    }
 
     let mut fd = fd;
     driver.try_push(Operation::new(&mut fd, 42)).unwrap_or_else(|_| panic!("queue is full"));
@@ -71,6 +74,9 @@ fn attach_read_multiple_and_close_attached() {
     while entries.len() < 1 {
         unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }
             .unwrap();
+    }
+    for e in entries {
+        e.into_result().unwrap();
     }
 }
 
@@ -102,6 +108,9 @@ fn register_read_multiple_and_close_fixed() {
         unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }
             .unwrap();
     }
+    for e in entries {
+        e.into_result().unwrap();
+    }
 
     let mut fixed_fd = fixed_fd;
     driver.try_push(Operation::new(&mut fixed_fd, 42)).unwrap_or_else(|_| panic!("queue is full"));
@@ -111,5 +120,8 @@ fn register_read_multiple_and_close_fixed() {
     while entries.len() < 1 {
         unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }
             .unwrap();
+    }
+    for e in entries {
+        e.into_result().unwrap();
     }
 }
