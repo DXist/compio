@@ -151,7 +151,7 @@ impl Runtime {
         let mut runtime_ref = self.op_runtime.borrow_mut();
         let completer = runtime_ref.completer();
 
-        if let Err(e) = unsafe { driver.submit_and_wait_completed(timeout, completer) } {
+        if let Err(e) = unsafe { driver.submit(timeout, completer) } {
             if e.kind() == io::ErrorKind::TimedOut {
                 return
             } else {

@@ -232,7 +232,7 @@ impl<'arena> Driver<'arena> {
                     *events_to_change += 1;
                     Some(event)
                 } else {
-                    // postpone the same io operations with the same fd to next `submit_and_wait` iterations
+                    // postpone the same io operations with the same fd to next `submit` iterations
                     None
                 };
                 // will filter skipped events via identity func
@@ -323,7 +323,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         self.squeue.capacity() - self.squeue.len()
     }
 
-    unsafe fn submit_and_wait_completed(
+    unsafe fn submit(
         &mut self,
         timeout: Option<Duration>,
         entries: &mut impl Extend<Entry>,

@@ -344,7 +344,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         self.squeue.capacity() - self.squeue.len()
     }
 
-    unsafe fn submit_and_wait_completed(
+    unsafe fn submit(
         &mut self,
         timeout: Option<Duration>,
         entries: &mut impl Extend<Entry>,

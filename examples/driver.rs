@@ -18,7 +18,7 @@ fn main() {
     let mut entries = ArrayVec::<Entry, 1>::new();
     unsafe {
         driver
-            .submit_and_wait_completed(None, &mut entries)
+            .submit(None, &mut entries)
             .unwrap();
     }
     let entry = entries.drain(..).next().unwrap();

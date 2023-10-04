@@ -160,7 +160,7 @@ impl<'arena> Driver<'arena> {
 
 
     // Submit and wait for completions until `timeout` is passed
-    fn submit(&mut self, timeout: Option<Duration>) -> io::Result<()> {
+    fn submit_impl(&mut self, timeout: Option<Duration>) -> io::Result<()> {
         let res = match timeout {
             None => self.inner.submit_and_wait(1),
             Some(Duration::ZERO) => self.inner.submit(),
@@ -325,7 +325,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         squeue.capacity() - squeue.len()
     }
 
-    unsafe fn submit_and_wait_completed(
+    unsafe fn submit(
         &mut self,
         timeout: Option<Duration>,
         completed: &mut impl Extend<Entry>,
@@ -337,7 +337,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
             self.files_update_state = FilesUpdateState::Submitted
         }
 
-        let res = self.submit(timeout);
+        let res = self.submit_impl(timeout);
         // if new submission entries are pushed during completion, runtime has to submit
         // and wait again
         self.complete_entries(completed);

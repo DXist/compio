@@ -22,7 +22,7 @@ fn cancel_before_poll() {
     let mut entries = ArrayVec::<Entry, 1>::new();
 
     let res =
-        unsafe { driver.submit_and_wait_completed(Some(Duration::from_secs(1)), &mut entries) };
+        unsafe { driver.submit(Some(Duration::from_secs(1)), &mut entries) };
     res.unwrap();
 }
 
@@ -32,7 +32,7 @@ fn timeout() {
 
     let mut entries = ArrayVec::<Entry, 1>::new();
     let res =
-        unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(1)), &mut entries) };
+        unsafe { driver.submit(Some(Duration::from_millis(1)), &mut entries) };
     res.unwrap();
 }
 
@@ -59,7 +59,7 @@ fn attach_read_multiple_and_close_attached() {
 
     let mut entries = ArrayVec::<Entry, TASK_LEN>::new();
     while entries.len() < TASK_LEN {
-        unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }
+        unsafe { driver.submit(Some(Duration::from_millis(10)), &mut entries) }
             .unwrap();
     }
     for e in entries {
@@ -73,7 +73,7 @@ fn attach_read_multiple_and_close_attached() {
     let mut entries = ArrayVec::<Entry, 1>::new();
 
     while entries.len() < 1 {
-        unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }
+        unsafe { driver.submit(Some(Duration::from_millis(10)), &mut entries) }
             .unwrap();
     }
     for e in entries {
@@ -106,7 +106,7 @@ fn register_read_multiple_and_close_fixed() {
 
     let mut entries = ArrayVec::<Entry, TASK_LEN>::new();
     while entries.len() < TASK_LEN {
-        unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }
+        unsafe { driver.submit(Some(Duration::from_millis(10)), &mut entries) }
             .unwrap();
     }
     for e in entries {
@@ -117,5 +117,5 @@ fn register_read_multiple_and_close_fixed() {
 
     let mut entries = ArrayVec::<Entry, 0>::new();
 
-    unsafe { driver.submit_and_wait_completed(Some(Duration::from_millis(10)), &mut entries) }.unwrap();
+    unsafe { driver.submit(Some(Duration::from_millis(10)), &mut entries) }.unwrap();
 }

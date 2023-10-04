@@ -79,13 +79,13 @@ cfg_if::cfg_if! {
 /// let mut entries = ArrayVec::<Entry, 2>::new();
 /// unsafe {
 ///     driver
-///         .submit_and_wait_completed(None, &mut entries)
+///         .submit(None, &mut entries)
 ///         .unwrap()
 /// };
 /// while entries.len() < 2 {
 ///     unsafe {
 ///         driver
-///             .submit_and_wait_completed(None, &mut entries)
+///             .submit(None, &mut entries)
 ///             .unwrap()
 ///     };
 /// }
@@ -124,7 +124,7 @@ pub trait CompleteIo<'arena> {
     /// ## Platform specific
     /// * IOCP: it will be attached to the completion port. Thus the same fd cannot be registered twice.
     /// * io-uring: it will be registered either
-    ///     * in async way during `submit_and_wait_completed` call when submission queue is not full and no other async registration is in progress
+    ///     * in async way during `submit` call when submission queue is not full and no other async registration is in progress
     ///     * or in sync style using a syscall in other cases
     /// Async operation uses reserved `u64::MAX` user_data key. Driver handles completion.
     /// Provided fd will override previously registered fd.
@@ -148,7 +148,7 @@ pub trait CompleteIo<'arena> {
     /// completed.
     ///
     /// When an operation is cancelled or completed successfully
-    /// `submit_and_wait_completed` will output it in `completed` iterator.
+    /// `submit` will output it in `completed` iterator.
     fn try_cancel(&mut self, user_data: usize) -> Result<(), ()>;
 
     /// Try to push operation into submission queue
@@ -189,7 +189,7 @@ pub trait CompleteIo<'arena> {
     ///
     /// * Operations should be alive until [`CompleteIo::poll`] returns its result.
     /// * User defined data should be unique.
-    unsafe fn submit_and_wait_completed(
+    unsafe fn submit(
         &mut self,
         timeout: Option<Duration>,
         completed: &mut impl Extend<Entry>,
