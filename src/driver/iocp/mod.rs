@@ -137,8 +137,7 @@ pub type FixedFd = Fd;
 pub type FdOrFixed = Fd;
 
 /// Invalid file descriptor value could be used as an initial value of uninitialized file descriptor
-pub const INVALID_FD: FdOrFixed =
-    Fd::from_raw(unsafe { std::mem::transmute(INVALID_HANDLE_VALUE) });
+pub const INVALID_FD: Fd = Fd::from_raw(unsafe { std::mem::transmute(INVALID_HANDLE_VALUE) });
 
 /// Abstraction of IOCP operations.
 pub trait OpCode {
