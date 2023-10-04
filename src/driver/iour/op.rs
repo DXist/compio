@@ -13,7 +13,7 @@ use libc::sockaddr_storage;
 pub use crate::driver::unix::op::*;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut},
-    driver::{OpCode, FdOrFixed, Fd},
+    driver::{Fd, FdOrFixed, OpCode},
 };
 
 macro_rules! apply_to_fd_or_fixed {
@@ -62,15 +62,15 @@ impl OpCode for Accept {
     fn create_entry(&mut self) -> Entry {
         // SAFETY: buffer is Unpin
         let buf_pointer = &mut self.buffer as *mut sockaddr_storage as *mut libc::sockaddr;
-        apply_to_fd_or_fixed!(opcode::Accept::new; self.fd, buf_pointer, &mut self.addr_len)
-        .build()
+        apply_to_fd_or_fixed!(opcode::Accept::new; self.fd, buf_pointer, &mut self.addr_len).build()
     }
 }
 
 impl OpCode for Connect {
     fn create_entry(&mut self) -> Entry {
         // SAFETY: SockAddr is Unpin
-        apply_to_fd_or_fixed!(opcode::Connect::new; self.fd, self.addr.as_ptr(), self.addr.len()).build()
+        apply_to_fd_or_fixed!(opcode::Connect::new; self.fd, self.addr.as_ptr(), self.addr.len())
+            .build()
     }
 }
 
@@ -86,7 +86,8 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendImpl<'arena, T> {
     fn create_entry(&mut self) -> Entry {
         // SAFETY: IoSlice is Unpin
         let slices = unsafe { self.buffer.as_io_slices() };
-        apply_to_fd_or_fixed!(opcode::Writev::new; self.fd, slices.as_ptr() as _, slices.len() as _).build()
+        apply_to_fd_or_fixed!(opcode::Writev::new; self.fd, slices.as_ptr() as _, slices.len() as _)
+            .build()
     }
 }
 

@@ -7,16 +7,15 @@ use std::{io, marker::PhantomData, time::Duration};
 use io_uring::{
     cqueue,
     opcode::{self, AsyncCancel, FilesUpdate},
-    squeue,
-    Probe,
     register::SKIP_FILE,
+    squeue,
     types::{SubmitArgs, Timespec},
-    IoUring,
+    IoUring, Probe,
 };
 pub(crate) use libc::{sockaddr_storage, socklen_t};
 
 use crate::{
-    driver::{CompleteIo, Entry, OpObject, Operation, unix::IntoFdOrFixed},
+    driver::{unix::IntoFdOrFixed, CompleteIo, Entry, OpObject, Operation},
     vec_deque_alloc,
 };
 
@@ -28,13 +27,16 @@ pub(crate) mod op;
 #[derive(Debug, Clone, Copy)]
 pub struct Fd {
     raw_fd: RawFd,
-    _not_send_not_sync: PhantomData<*const ()>
+    _not_send_not_sync: PhantomData<*const ()>,
 }
 
 impl Fd {
     #[inline]
     const fn from_raw(raw_fd: RawFd) -> Self {
-        Self { raw_fd, _not_send_not_sync: PhantomData }
+        Self {
+            raw_fd,
+            _not_send_not_sync: PhantomData,
+        }
     }
 
     #[inline]
@@ -47,13 +49,16 @@ impl Fd {
 #[derive(Debug, Clone, Copy)]
 pub struct FixedFd {
     offset: u32,
-    _not_send_not_sync: PhantomData<*const ()>
+    _not_send_not_sync: PhantomData<*const ()>,
 }
 
 impl FixedFd {
     #[inline]
     const fn from_offset(offset: u32) -> Self {
-        Self { offset, _not_send_not_sync: PhantomData }
+        Self {
+            offset,
+            _not_send_not_sync: PhantomData,
+        }
     }
 
     #[inline]
@@ -68,7 +73,7 @@ pub enum FdOrFixed {
     /// Attached Fd
     Fd(Fd),
     /// Attached Fd with fixed id
-    Fixed(FixedFd)
+    Fixed(FixedFd),
 }
 
 impl IntoFdOrFixed for Fd {
@@ -114,7 +119,7 @@ enum FilesUpdateState {
     // async FilesUpdate is pushed to submission queue
     Pushed,
     // async FilesUpdate is submitted but not completed yet
-    Submitted
+    Submitted,
 }
 
 impl<'arena> Driver<'arena> {
@@ -144,8 +149,7 @@ impl<'arena> Driver<'arena> {
                 }
                 files
             }
-        }
-        else {
+        } else {
             Vec::new()
         };
 
@@ -157,7 +161,6 @@ impl<'arena> Driver<'arena> {
             _lifetime: PhantomData,
         })
     }
-
 
     // Submit and wait for completions until `timeout` is passed
     fn submit_impl(&mut self, timeout: Option<Duration>) -> io::Result<()> {
@@ -198,7 +201,7 @@ impl<'arena> Driver<'arena> {
                     self.files_update_state = FilesUpdateState::NoUpdateInProgress;
                     // we processed CQE
                     None
-                },
+                }
                 _ => match entry.result() {
                     // https://man7.org/linux/man-pages/man3/io_uring_prep_cancel.3.html
                     // The specified timeout occurred and triggered the completion event.,
@@ -213,7 +216,7 @@ impl<'arena> Driver<'arena> {
                     // successfully, or interrupted due to the cancelation.
                     NOT_CANCELLABLE => None,
                     _ => Some(create_entry(entry)),
-                }
+                },
             }
         });
         entries.extend(completed_entries);
@@ -221,16 +224,21 @@ impl<'arena> Driver<'arena> {
 
     #[inline]
     fn register_fd_impl(&mut self, fd: RawFd, id: u32) -> io::Result<()> {
-        debug_assert!(self.files_update_fds.len() > 0, "files_to_register is nonzero");
-        debug_assert!(( id as usize ) < self.files_update_fds.len(), "registered fixed file index is within [0; files_to_register) range");
+        debug_assert!(
+            self.files_update_fds.len() > 0,
+            "files_to_register is nonzero"
+        );
+        debug_assert!(
+            (id as usize) < self.files_update_fds.len(),
+            "registered fixed file index is within [0; files_to_register) range"
+        );
 
-        let is_squeue_full = unsafe {
-            self.inner.submission_shared().is_full()
-        };
+        let is_squeue_full = unsafe { self.inner.submission_shared().is_full() };
 
         match (is_squeue_full, self.files_update_state) {
             (true, _) | (false, FilesUpdateState::Submitted) => {
-                // fallback to synchronous registration when squeue is full or async files_update is not completed yet
+                // fallback to synchronous registration when squeue is full or async files_update is
+                // not completed yet
                 self.inner.submitter().register_files_update(id, &[fd])?;
             }
             (false, FilesUpdateState::NoUpdateInProgress) => {
@@ -240,7 +248,8 @@ impl<'arena> Driver<'arena> {
                 let len = u32::try_from(self.files_update_fds.len()).expect("in range");
                 let fds_ptr = self.files_update_fds.as_ptr();
                 let squeue_entry = FilesUpdate::new(fds_ptr, len)
-                    .build().user_data(Self::FILES_UPDATE_KEY);
+                    .build()
+                    .user_data(Self::FILES_UPDATE_KEY);
                 let mut squeue = self.inner.submission();
                 unsafe { squeue.push(&squeue_entry) }.expect("squeue is not full");
                 self.files_update_state = FilesUpdateState::Pushed;
@@ -262,7 +271,8 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
 
     #[inline]
     fn register_fd(&mut self, fd: RawFd, id: u32) -> io::Result<FixedFd> {
-        self.register_fd_impl(fd, id).map(|_| FixedFd::from_offset(id))
+        self.register_fd_impl(fd, id)
+            .map(|_| FixedFd::from_offset(id))
     }
 
     #[inline]

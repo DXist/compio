@@ -17,9 +17,7 @@ fn main() {
 
     let mut entries = ArrayVec::<Entry, 1>::new();
     unsafe {
-        driver
-            .submit(None, &mut entries)
-            .unwrap();
+        driver.submit(None, &mut entries).unwrap();
     }
     let entry = entries.drain(..).next().unwrap();
     assert_eq!(entry.user_data(), 0);

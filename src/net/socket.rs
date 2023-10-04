@@ -2,11 +2,9 @@ use std::{io, net::Shutdown};
 
 use socket2::{Domain, Protocol, SockAddr, Socket as Socket2, Type};
 
-use crate::impl_raw_fd;
-
 #[cfg(all(feature = "runtime", windows))]
 use crate::driver::AsRawFd;
-
+use crate::impl_raw_fd;
 #[cfg(feature = "runtime")]
 use crate::{
     buf::{BufWrapper, BufWrapperMut, IntoInner, IoBuf, IoBufMut, VectoredBufWrapper},

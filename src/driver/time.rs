@@ -82,9 +82,15 @@ impl TimerWheel {
 }
 
 impl Extend<(usize, Duration)> for TimerWheel {
-    fn extend<T>(&mut self, iter: T) where T: IntoIterator<Item=(usize, Duration)> {
+    fn extend<T>(&mut self, iter: T)
+    where
+        T: IntoIterator<Item = (usize, Duration)>,
+    {
         let now = Instant::now();
-        self.0.extend(iter.into_iter().map(|(key, delay)| Timer { key, deadline: now + delay }));
+        self.0.extend(iter.into_iter().map(|(key, delay)| Timer {
+            key,
+            deadline: now + delay,
+        }));
     }
 }
 

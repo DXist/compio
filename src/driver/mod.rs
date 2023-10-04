@@ -77,17 +77,9 @@ cfg_if::cfg_if! {
 /// let mut ops = VecDeque::from([(&mut op_write, 1).into(), (&mut op_read, 2).into()]);
 /// driver.push_queue(&mut ops);
 /// let mut entries = ArrayVec::<Entry, 2>::new();
-/// unsafe {
-///     driver
-///         .submit(None, &mut entries)
-///         .unwrap()
-/// };
+/// unsafe { driver.submit(None, &mut entries).unwrap() };
 /// while entries.len() < 2 {
-///     unsafe {
-///         driver
-///             .submit(None, &mut entries)
-///             .unwrap()
-///     };
+///     unsafe { driver.submit(None, &mut entries).unwrap() };
 /// }
 ///
 /// let mut n_bytes = 0;
@@ -122,9 +114,11 @@ pub trait CompleteIo<'arena> {
     /// Attach fd to the driver and register it as fixed file descriptor with the provided fixed id.
     ///
     /// ## Platform specific
-    /// * IOCP: it will be attached to the completion port. Thus the same fd cannot be registered twice.
+    /// * IOCP: it will be attached to the completion port. Thus the same fd cannot be registered
+    ///   twice.
     /// * io-uring: it will be registered either
-    ///     * in async way during `submit` call when submission queue is not full and no other async registration is in progress
+    ///     * in async way during `submit` call when submission queue is not full and no other async
+    ///       registration is in progress
     ///     * or in sync style using a syscall in other cases
     /// Async operation uses reserved `u64::MAX` user_data key. Driver handles completion.
     /// Provided fd will override previously registered fd.

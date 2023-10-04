@@ -1,9 +1,9 @@
 use std::{
+    fs::File,
     io,
     os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd},
+    process::{ChildStderr, ChildStdout},
 };
-use std::fs::File;
-use std::process::{ChildStderr, ChildStdout};
 
 use arrayvec::ArrayVec;
 
@@ -70,7 +70,6 @@ impl EventHandle {
 
 impl_raw_fd!(EventHandle, fd);
 
-
 /// From mio::unix::pipe
 fn pipe_new_raw() -> io::Result<[RawFd; 2]> {
     let mut fds: [RawFd; 2] = [-1, -1];
@@ -121,7 +120,6 @@ fn pipe_new_raw() -> io::Result<[RawFd; 2]> {
 
     Ok(fds)
 }
-
 
 fn pipe_new() -> io::Result<(Sender, Receiver)> {
     let fds = pipe_new_raw()?;

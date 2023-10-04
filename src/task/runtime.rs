@@ -10,7 +10,7 @@ use std::{
 use async_task::{Runnable, Task};
 
 use crate::{
-    driver::{AsRawFd, CompleteIo, Driver, OpCode, OpObject, RawFd, Fd},
+    driver::{AsRawFd, CompleteIo, Driver, Fd, OpCode, OpObject, RawFd},
     task::op::{OpFuture, OpRuntime},
     Key,
 };
@@ -153,7 +153,7 @@ impl Runtime {
 
         if let Err(e) = unsafe { driver.submit(timeout, completer) } {
             if e.kind() == io::ErrorKind::TimedOut {
-                return
+                return;
             } else {
                 panic!("{:?}", e);
             }

@@ -21,8 +21,7 @@ fn cancel_before_poll() {
     driver.push_queue(&mut ops);
     let mut entries = ArrayVec::<Entry, 1>::new();
 
-    let res =
-        unsafe { driver.submit(Some(Duration::from_secs(1)), &mut entries) };
+    let res = unsafe { driver.submit(Some(Duration::from_secs(1)), &mut entries) };
     res.unwrap();
 }
 
@@ -31,8 +30,7 @@ fn timeout() {
     let mut driver = Driver::new().unwrap();
 
     let mut entries = ArrayVec::<Entry, 1>::new();
-    let res =
-        unsafe { driver.submit(Some(Duration::from_millis(1)), &mut entries) };
+    let res = unsafe { driver.submit(Some(Duration::from_millis(1)), &mut entries) };
     res.unwrap();
 }
 
@@ -53,14 +51,14 @@ fn attach_read_multiple_and_close_attached() {
 
     for (i, read) in ops.iter_mut().enumerate() {
         let op = Operation::new(read, i);
-        driver.try_push(op).unwrap_or_else(|_| panic!("queue is full"));
-
+        driver
+            .try_push(op)
+            .unwrap_or_else(|_| panic!("queue is full"));
     }
 
     let mut entries = ArrayVec::<Entry, TASK_LEN>::new();
     while entries.len() < TASK_LEN {
-        unsafe { driver.submit(Some(Duration::from_millis(10)), &mut entries) }
-            .unwrap();
+        unsafe { driver.submit(Some(Duration::from_millis(10)), &mut entries) }.unwrap();
     }
     for e in entries {
         e.into_result().unwrap();
@@ -68,13 +66,14 @@ fn attach_read_multiple_and_close_attached() {
 
     // close attached fd
     let mut fd = fd;
-    driver.try_push(Operation::new(&mut fd, 42)).unwrap_or_else(|_| panic!("queue is full"));
+    driver
+        .try_push(Operation::new(&mut fd, 42))
+        .unwrap_or_else(|_| panic!("queue is full"));
 
     let mut entries = ArrayVec::<Entry, 1>::new();
 
     while entries.len() < 1 {
-        unsafe { driver.submit(Some(Duration::from_millis(10)), &mut entries) }
-            .unwrap();
+        unsafe { driver.submit(Some(Duration::from_millis(10)), &mut entries) }.unwrap();
     }
     for e in entries {
         e.into_result().unwrap();
@@ -100,14 +99,14 @@ fn register_read_multiple_and_close_fixed() {
 
     for (i, read) in ops.iter_mut().enumerate() {
         let op = Operation::new(read, i);
-        driver.try_push(op).unwrap_or_else(|_| panic!("queue is full"));
-
+        driver
+            .try_push(op)
+            .unwrap_or_else(|_| panic!("queue is full"));
     }
 
     let mut entries = ArrayVec::<Entry, TASK_LEN>::new();
     while entries.len() < TASK_LEN {
-        unsafe { driver.submit(Some(Duration::from_millis(10)), &mut entries) }
-            .unwrap();
+        unsafe { driver.submit(Some(Duration::from_millis(10)), &mut entries) }.unwrap();
     }
     for e in entries {
         e.into_result().unwrap();

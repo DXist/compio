@@ -34,8 +34,8 @@ use crate::{
 ///     let rx_fut = listener.accept();
 ///     let tx_fut = TcpStream::connect(&listener_addr);
 ///
-///     let ((rx, _sock_addr), tx) = futures_util::try_join!(rx_fut, tx_fut).expect("connected and accepted");
-///
+///     let ((rx, _sock_addr), tx) =
+///         futures_util::try_join!(rx_fut, tx_fut).expect("connected and accepted");
 ///
 ///     let (res, _buf) = tx.send_all("test").await;
 ///     res.expect("sent");

@@ -1,32 +1,41 @@
 use std::io;
 
+use rustix::event::kqueue::{Event, EventFilter, EventFlags};
+
 #[cfg(feature = "time")]
 pub use crate::driver::time::Timeout;
 pub use crate::driver::unix::op::*;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut},
-    driver::{OpCode, Fd},
+    driver::{Fd, OpCode},
     syscall,
 };
-use rustix::event::kqueue::{Event, EventFilter, EventFlags};
 
 macro_rules! add_event_flags {
     () => {
         EventFlags::ADD | EventFlags::ENABLE | EventFlags::ONESHOT
-    }
+    };
 }
 
 macro_rules! read_filter_event {
     ($self:ident, $user_data:ident) => {
-        Event::new(EventFilter::Read($self.fd.as_raw_fd()), add_event_flags!(), $user_data as isize)
-    }
+        Event::new(
+            EventFilter::Read($self.fd.as_raw_fd()),
+            add_event_flags!(),
+            $user_data as isize,
+        )
+    };
 }
 use read_filter_event;
 
 macro_rules! write_filter_event {
     ($self:ident, $user_data:ident) => {
-        Event::new(EventFilter::Write($self.fd.as_raw_fd()), add_event_flags!(), $user_data as isize)
-    }
+        Event::new(
+            EventFilter::Write($self.fd.as_raw_fd()),
+            add_event_flags!(),
+            $user_data as isize,
+        )
+    };
 }
 use write_filter_event;
 
@@ -49,7 +58,6 @@ impl<'arena, T: IoBufMut<'arena>> OpCode for ReadAt<'arena, T> {
     fn as_event(&self, user_data: usize) -> Event {
         read_filter_event!(self, user_data)
     }
-
 }
 
 impl<'arena, T: IoBuf<'arena>> OpCode for WriteAt<'arena, T> {
@@ -74,7 +82,10 @@ impl<'arena, T: IoBuf<'arena>> OpCode for WriteAt<'arena, T> {
 
 impl OpCode for Sync {
     fn operate(&mut self) -> Option<io::Result<usize>> {
-        Some(syscall!(fsync(self.fd.as_raw_fd())).map(|ok| usize::try_from(ok).expect("non negative")))
+        Some(
+            syscall!(fsync(self.fd.as_raw_fd()))
+                .map(|ok| usize::try_from(ok).expect("non negative")),
+        )
     }
 
     fn as_event(&self, _: usize) -> Event {
@@ -121,8 +132,7 @@ impl OpCode for Connect {
             } else {
                 if err == 0 {
                     Some(Ok(0))
-                }
-                else {
+                } else {
                     Some(Err(io::Error::from_raw_os_error(err)))
                 }
             }
@@ -132,7 +142,6 @@ impl OpCode for Connect {
     fn as_event(&self, user_data: usize) -> Event {
         write_filter_event!(self, user_data)
     }
-
 }
 
 impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvImpl<'arena, T> {

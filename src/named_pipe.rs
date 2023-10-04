@@ -753,7 +753,7 @@ impl ServerOptions {
     ///
     /// # })
     /// ```
-    ///
+    /// 
     /// [`WRITE_DAC`]: https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createnamedpipea
     pub fn write_dac(&mut self, requested: bool) -> &mut Self {
         self.write_dac = requested;

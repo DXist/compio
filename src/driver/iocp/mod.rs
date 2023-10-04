@@ -16,15 +16,15 @@ use windows_sys::Win32::{
         RtlNtStatusToDosError, ERROR_HANDLE_EOF, ERROR_IO_INCOMPLETE, ERROR_NO_DATA,
         FACILITY_NTWIN32, INVALID_HANDLE_VALUE, NTSTATUS, STATUS_PENDING, STATUS_SUCCESS,
     },
-    Storage::FileSystem::{SetFileCompletionNotificationModes},
+    Storage::FileSystem::SetFileCompletionNotificationModes,
     System::{
         SystemServices::ERROR_SEVERITY_ERROR,
         Threading::INFINITE,
+        WindowsProgramming::{FILE_SKIP_COMPLETION_PORT_ON_SUCCESS, FILE_SKIP_SET_EVENT_ON_HANDLE},
         IO::{
             CreateIoCompletionPort, GetQueuedCompletionStatusEx, PostQueuedCompletionStatus,
             OVERLAPPED, OVERLAPPED_ENTRY,
         },
-        WindowsProgramming::{FILE_SKIP_COMPLETION_PORT_ON_SUCCESS, FILE_SKIP_SET_EVENT_ON_HANDLE}
     },
 };
 
@@ -113,13 +113,16 @@ impl IntoRawFd for socket2::Socket {
 #[derive(Debug, Clone, Copy)]
 pub struct Fd {
     raw_fd: RawFd,
-    _not_send_not_sync: PhantomData<*const ()>
+    _not_send_not_sync: PhantomData<*const ()>,
 }
 
 impl Fd {
     #[inline]
     const fn from_raw(raw_fd: RawFd) -> Self {
-        Self { raw_fd, _not_send_not_sync: PhantomData }
+        Self {
+            raw_fd,
+            _not_send_not_sync: PhantomData,
+        }
     }
 
     #[inline]
@@ -134,7 +137,8 @@ pub type FixedFd = Fd;
 pub type FdOrFixed = Fd;
 
 /// Invalid file descriptor value could be used as an initial value of uninitialized file descriptor
-pub const INVALID_FD: FdOrFixed = Fd::from_raw(unsafe { std::mem::transmute(INVALID_HANDLE_VALUE) });
+pub const INVALID_FD: FdOrFixed =
+    Fd::from_raw(unsafe { std::mem::transmute(INVALID_HANDLE_VALUE) });
 
 /// Abstraction of IOCP operations.
 pub trait OpCode {
@@ -213,7 +217,7 @@ impl<'arena> Driver<'arena> {
         match res.map(|_| ()) {
             // timeouts are expected
             Err(err) if err.kind() == io::ErrorKind::TimedOut => Ok(()),
-            res => res
+            res => res,
         }
     }
 
@@ -279,12 +283,11 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
             BOOL,
             CreateIoCompletionPort(fd as _, self.port.as_raw_handle() as _, 0, 0)
         )?;
-        let flags = u8::try_from(FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE).expect("within u8 range");
+        let flags =
+            u8::try_from(FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE)
+                .expect("within u8 range");
 
-        syscall!(
-            BOOL,
-            SetFileCompletionNotificationModes(fd as _, flags)
-        )?;
+        syscall!(BOOL, SetFileCompletionNotificationModes(fd as _, flags))?;
         Ok(Fd::from_raw(fd))
     }
 
@@ -300,7 +303,11 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
 
     #[inline]
     fn try_cancel(&mut self, user_data: usize) -> Result<(), ()> {
-        if let Some(pos) = self.squeue.iter().position(|operation| operation.user_data() == user_data) {
+        if let Some(pos) = self
+            .squeue
+            .iter()
+            .position(|operation| operation.user_data() == user_data)
+        {
             // we assume cancellations are rare
             let _ = self.squeue.remove(pos);
         }
@@ -376,7 +383,8 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         entries.extend(
             self.iocp_entries
                 .drain(..)
-                .filter_map(|e| Some(Self::create_entry(e))));
+                .filter_map(|e| Some(Self::create_entry(e))),
+        );
 
         res
     }

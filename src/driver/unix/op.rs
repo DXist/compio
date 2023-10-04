@@ -5,7 +5,7 @@ use socket2::SockAddr;
 
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IntoInner, IoBuf, IoBufMut},
-    driver::{FdOrFixed, unix::IntoFdOrFixed},
+    driver::{unix::IntoFdOrFixed, FdOrFixed},
 };
 
 /// Read a file at specified position into specified buffer.
@@ -18,7 +18,7 @@ pub struct ReadAt<'arena, T: IoBufMut<'arena>> {
 
 impl<'arena, T: IoBufMut<'arena>> ReadAt<'arena, T> {
     /// Create [`ReadAt`].
-    pub fn new(fd: impl IntoFdOrFixed<Target=FdOrFixed>, offset: usize, buffer: T) -> Self {
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, offset: usize, buffer: T) -> Self {
         Self {
             fd: fd.into(),
             offset,
@@ -46,7 +46,7 @@ pub struct WriteAt<'arena, T: IoBuf<'arena>> {
 
 impl<'arena, T: IoBuf<'arena>> WriteAt<'arena, T> {
     /// Create [`WriteAt`].
-    pub fn new(fd: impl IntoFdOrFixed<Target=FdOrFixed>, offset: usize, buffer: T) -> Self {
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, offset: usize, buffer: T) -> Self {
         Self {
             fd: fd.into(),
             offset,
@@ -68,19 +68,26 @@ impl<'arena, T: IoBuf<'arena>> IntoInner for WriteAt<'arena, T> {
 pub struct Connect {
     pub(crate) fd: FdOrFixed,
     pub(crate) addr: SockAddr,
-    #[cfg(not(target_os="linux"))]
+    #[cfg(not(target_os = "linux"))]
     pub(crate) initiated: bool,
 }
 
 impl Connect {
     /// Create [`Connect`]. `fd` should be bound.
-    pub fn new(fd: impl IntoFdOrFixed<Target=FdOrFixed>, addr: SockAddr) -> Self {
-        #[cfg(target_os="linux")]
-        let this = Self { fd: fd.into(), addr };
-        #[cfg(not(target_os="linux"))]
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, addr: SockAddr) -> Self {
+        #[cfg(target_os = "linux")]
+        let this = Self {
+            fd: fd.into(),
+            addr,
+        };
+        #[cfg(not(target_os = "linux"))]
         let this = {
             let initiated = false;
-            Self { fd: fd.into(), addr, initiated }
+            Self {
+                fd: fd.into(),
+                addr,
+                initiated,
+            }
         };
         this
     }
@@ -95,7 +102,7 @@ pub struct Accept {
 
 impl Accept {
     /// Create [`Accept`].
-    pub fn new(fd: impl IntoFdOrFixed<Target=FdOrFixed>) -> Self {
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>) -> Self {
         Self {
             fd: fd.into(),
             buffer: unsafe { std::mem::zeroed() },
@@ -126,8 +133,11 @@ impl Sync {
     /// * IOCP: it is synchronized operation, and calls `FlushFileBuffers`.
     /// * io-uring: `fdatasync` if `datasync` specified, otherwise `fsync`.
     /// * kqueue: it is synchronized `fdatasync` or `fsync`.
-    pub fn new(fd: impl IntoFdOrFixed<Target=FdOrFixed>, datasync: bool) -> Self {
-        Self { fd: fd.into(), datasync }
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, datasync: bool) -> Self {
+        Self {
+            fd: fd.into(),
+            datasync,
+        }
     }
 }
 
@@ -140,7 +150,7 @@ pub struct RecvImpl<'arena, T: AsIoSlicesMut<'arena>> {
 
 impl<'arena, T: AsIoSlicesMut<'arena>> RecvImpl<'arena, T> {
     /// Create [`Recv`] or [`RecvVectored`].
-    pub fn new(fd: impl IntoFdOrFixed<Target=FdOrFixed>, buffer: T) -> Self {
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T) -> Self {
         Self {
             fd: fd.into(),
             buffer,
@@ -166,7 +176,7 @@ pub struct SendImpl<'arena, T: AsIoSlices<'arena>> {
 
 impl<'arena, T: AsIoSlices<'arena>> SendImpl<'arena, T> {
     /// Create [`Send`] or [`SendVectored`].
-    pub fn new(fd: impl IntoFdOrFixed<Target=FdOrFixed>, buffer: T) -> Self {
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T) -> Self {
         Self {
             fd: fd.into(),
             buffer,
@@ -194,7 +204,7 @@ pub struct RecvFromImpl<'arena, T: AsIoSlicesMut<'arena>> {
 
 impl<'arena, T: AsIoSlicesMut<'arena>> RecvFromImpl<'arena, T> {
     /// Create [`RecvFrom`] or [`RecvFromVectored`].
-    pub fn new(fd: impl IntoFdOrFixed<Target=FdOrFixed>, buffer: T) -> Self {
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T) -> Self {
         Self {
             fd: fd.into(),
             buffer,
@@ -243,7 +253,7 @@ pub struct SendToImpl<'arena, T: AsIoSlices<'arena>> {
 
 impl<'arena, T: AsIoSlices<'arena>> SendToImpl<'arena, T> {
     /// Create [`SendTo`] or [`SendToVectored`].
-    pub fn new(fd: impl IntoFdOrFixed<Target=FdOrFixed>, buffer: T, addr: SockAddr) -> Self {
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T, addr: SockAddr) -> Self {
         Self {
             fd: fd.into(),
             buffer,

@@ -14,15 +14,15 @@ use windows_sys::{
     core::GUID,
     Win32::{
         Foundation::{
-            GetLastError, ERROR_HANDLE_EOF, ERROR_IO_INCOMPLETE, ERROR_IO_PENDING, ERROR_NO_DATA,
-            ERROR_PIPE_CONNECTED, CloseHandle
+            CloseHandle, GetLastError, ERROR_HANDLE_EOF, ERROR_IO_INCOMPLETE, ERROR_IO_PENDING,
+            ERROR_NO_DATA, ERROR_PIPE_CONNECTED,
         },
         Networking::WinSock::{
-            setsockopt, getsockopt, socklen_t, WSAIoctl, WSARecv, WSARecvFrom, WSASend, WSASendTo,
-            LPFN_ACCEPTEX, LPFN_CONNECTEX, LPFN_GETACCEPTEXSOCKADDRS,
-            SIO_GET_EXTENSION_FUNCTION_POINTER, SOCKADDR, SOCKADDR_STORAGE, SOL_SOCKET,
-            SO_UPDATE_ACCEPT_CONTEXT, SO_UPDATE_CONNECT_CONTEXT, WSAID_ACCEPTEX, WSAID_CONNECTEX,
-            WSAID_GETACCEPTEXSOCKADDRS, SO_ERROR, WSAENOTSOCK, closesocket
+            closesocket, getsockopt, setsockopt, socklen_t, WSAIoctl, WSARecv, WSARecvFrom,
+            WSASend, WSASendTo, LPFN_ACCEPTEX, LPFN_CONNECTEX, LPFN_GETACCEPTEXSOCKADDRS,
+            SIO_GET_EXTENSION_FUNCTION_POINTER, SOCKADDR, SOCKADDR_STORAGE, SOL_SOCKET, SO_ERROR,
+            SO_UPDATE_ACCEPT_CONTEXT, SO_UPDATE_CONNECT_CONTEXT, WSAENOTSOCK, WSAID_ACCEPTEX,
+            WSAID_CONNECTEX, WSAID_GETACCEPTEXSOCKADDRS,
         },
         Storage::FileSystem::{FlushFileBuffers, ReadFile, WriteFile},
         System::{Pipes::ConnectNamedPipe, IO::OVERLAPPED},
@@ -35,7 +35,7 @@ use crate::driver::iocp::TIMER_PENDING;
 pub use crate::driver::time::Timeout;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IntoInner, IoBuf, IoBufMut},
-    driver::{iocp::Overlapped, OpCode, Fd, RawFd},
+    driver::{iocp::Overlapped, Fd, OpCode, RawFd},
     syscall,
 };
 
@@ -297,10 +297,7 @@ impl Sync {
     /// * io-uring: `fdatasync` if `datasync` specified, otherwise `fsync`.
     /// * kqueue: it is synchronized `fdatasync` or `fsync`.
     pub fn new(fd: Fd, datasync: bool) -> Self {
-        Self {
-            fd,
-            datasync,
-        }
+        Self { fd, datasync }
     }
 }
 
@@ -647,7 +644,10 @@ impl ConnectNamedPipe {
 impl OpCode for ConnectNamedPipe {
     unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
         self.overlapped.user_data = user_data;
-        let res = ConnectNamedPipe(self.fd.as_raw_fd() as _, &mut self.overlapped.base as *mut _);
+        let res = ConnectNamedPipe(
+            self.fd.as_raw_fd() as _,
+            &mut self.overlapped.base as *mut _,
+        );
         win32_result(res, 0)
     }
 
@@ -676,28 +676,23 @@ fn get_sockopt_error(fd: RawFd) -> Result<(), i32> {
     let mut err_code = 0;
     let mut err_len = std::mem::size_of::<i32>() as i32;
 
-    let rc = unsafe { getsockopt(
-        fd as _,
-        SOL_SOCKET,
-        SO_ERROR,
-        &mut err_code as *mut _ as *mut u8,
-        &mut err_len as *mut _,
-    ) };
+    let rc = unsafe {
+        getsockopt(
+            fd as _,
+            SOL_SOCKET,
+            SO_ERROR,
+            &mut err_code as *mut _ as *mut u8,
+            &mut err_len as *mut _,
+        )
+    };
 
     debug_assert!(err_len == 4);
-    if rc !=0 {
+    if rc != 0 {
         Err(rc)
-    }
-    else {
-        if err_code == 0 {
-            Ok(())
-        }
-        else {
-            Err(err_code)
-        }
+    } else {
+        if err_code == 0 { Ok(()) } else { Err(err_code) }
     }
 }
-
 
 /// Close file descriptor.
 ///
@@ -714,21 +709,17 @@ impl OpCode for Fd {
                 let closed = CloseHandle(fd as _);
                 if closed == 0 {
                     Err(std::io::Error::last_os_error())
-                }
-                else {
+                } else {
                     Ok(0)
                 }
-            },
-            Err(_) => {
-                Err(std::io::Error::last_os_error())
-            },
+            }
+            Err(_) => Err(std::io::Error::last_os_error()),
             Ok(()) => {
                 // close socket
                 let rc = closesocket(fd as _);
                 if rc != 0 {
                     Err(std::io::Error::last_os_error())
-                }
-                else {
+                } else {
                     Ok(0)
                 }
             }

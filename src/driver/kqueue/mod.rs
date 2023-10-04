@@ -1,23 +1,17 @@
 #[cfg(feature = "allocator_api")]
 use std::alloc::Allocator;
 #[doc(no_inline)]
-pub use std::os::fd::{AsFd, AsRawFd, FromRawFd, IntoRawFd, RawFd, OwnedFd};
-use std::{
-    collections::VecDeque,
-    marker::PhantomData,
-    io,
-    time::Duration,
-};
-use bit_set::BitSet;
-use std::convert::identity;
+pub use std::os::fd::{AsFd, AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
+use std::{collections::VecDeque, convert::identity, io, marker::PhantomData, time::Duration};
 
+use bit_set::BitSet;
 pub(crate) use libc::{sockaddr_storage, socklen_t};
-use rustix::event::kqueue::{Event, kqueue, kevent, EventFlags, EventFilter};
+use rustix::event::kqueue::{kevent, kqueue, Event, EventFilter, EventFlags};
 
 #[cfg(feature = "time")]
 use crate::driver::time::TimerWheel;
 use crate::{
-    driver::{CompleteIo, Entry, OpObject, Operation, unix::IntoFdOrFixed},
+    driver::{unix::IntoFdOrFixed, CompleteIo, Entry, OpObject, Operation},
     vec_deque_alloc,
 };
 
@@ -29,13 +23,16 @@ pub(crate) mod op;
 #[derive(Debug, Clone, Copy)]
 pub struct Fd {
     raw_fd: RawFd,
-    _not_send_not_sync: PhantomData<*const ()>
+    _not_send_not_sync: PhantomData<*const ()>,
 }
 
 impl Fd {
     #[inline]
     const fn from_raw(raw_fd: RawFd) -> Self {
-        Self { raw_fd, _not_send_not_sync: PhantomData }
+        Self {
+            raw_fd,
+            _not_send_not_sync: PhantomData,
+        }
     }
 
     #[inline]
@@ -63,7 +60,6 @@ pub const INVALID_FD: FdOrFixed = Fd::from_raw(-1);
 
 /// Abstraction of operations.
 pub trait OpCode {
-
     /// Perform the operation before checking for readiness, and return [`Some(Result>`] to
     /// indicate whether the operation is completed instead of rescheduled
     fn operate(&mut self) -> Option<io::Result<usize>>;
@@ -77,7 +73,6 @@ pub trait OpCode {
         unimplemented!("operation is not a timer")
     }
 }
-
 
 #[cfg(feature = "time")]
 const TIMER_PENDING: usize = usize::MAX - 2;
@@ -143,26 +138,26 @@ impl<'arena> Driver<'arena> {
                 None => {
                     self.io_pending.push_back(op);
                     None
-                },
-                Some(res) => {
-                    match res {
-                        #[cfg(feature = "time")]
-                        Ok(TIMER_PENDING) => {
-                            self.timers.insert(user_data, opcode.timer_delay());
-                            None
-                        },
-                        res => {
-                            Some(Entry::new(user_data, res))
-                        }
-                    }
                 }
+                Some(res) => match res {
+                    #[cfg(feature = "time")]
+                    Ok(TIMER_PENDING) => {
+                        self.timers.insert(user_data, opcode.timer_delay());
+                        None
+                    }
+                    res => Some(Entry::new(user_data, res)),
+                },
             }
         });
 
         entries.extend(oneshot_completed_iter);
     }
 
-    fn operate_completed_and_requeue(&mut self, io_pending_scanned_till: usize, entries: &mut impl Extend<Entry>) {
+    fn operate_completed_and_requeue(
+        &mut self,
+        io_pending_scanned_till: usize,
+        entries: &mut impl Extend<Entry>,
+    ) {
         // stash indices of ready events
         self.completed_events_indices.clear();
 
@@ -177,8 +172,7 @@ impl<'arena> Driver<'arena> {
                 let c_err = i32::try_from(event.data()).expect("system error in i32 range");
                 let err = io::Error::from_raw_os_error(c_err);
                 Some(Entry::new(user_data, Err(err)))
-            }
-            else {
+            } else {
                 // operate the ready op
                 match op.opcode().operate() {
                     // still pending, will requeue later
@@ -193,7 +187,8 @@ impl<'arena> Driver<'arena> {
 
         entries.extend(completed_ops_iter);
 
-        // operations not in `self.completed_events_indices` are still pending - reschedule to the back of the queue
+        // operations not in `self.completed_events_indices` are still pending - reschedule to the
+        // back of the queue
         for index in 0..io_pending_scanned_till {
             let op = self.io_pending.pop_front().expect("front exists");
             if !self.completed_events_indices.contains(index) {
@@ -201,11 +196,14 @@ impl<'arena> Driver<'arena> {
             }
             // else operation is completed
         }
-
     }
 
     // On success returns index of self.io_pending a scan stopped at
-    fn check_readiness(&mut self, timeout: Option<Duration>, entries: &mut impl Extend<Entry>) -> io::Result<usize> {
+    fn check_readiness(
+        &mut self,
+        timeout: Option<Duration>,
+        entries: &mut impl Extend<Entry>,
+    ) -> io::Result<usize> {
         self.events_to_change.clear();
         self.to_change_fd_reads.clear();
         self.to_change_fd_writes.clear();
@@ -213,36 +211,40 @@ impl<'arena> Driver<'arena> {
         let max_events_to_change = self.events_to_change.capacity();
 
         let mut scanned_till = 0_usize;
-        let change_event_iter = self.io_pending.iter().enumerate().scan(0, |events_to_change, (index, op)| {
-            scanned_till = index;
-            // iterate till hit events_to_change capacity
-            if *events_to_change < max_events_to_change {
-                let event = op.opcode_ref().as_event(index);
-                let fd_absent = match event.filter() {
-                    EventFilter::Read(raw_fd) => {
-                        debug_assert!(raw_fd >=0);
-                        self.to_change_fd_reads.insert(raw_fd as usize)
-                    },
-                    EventFilter::Write(raw_fd) => {
-                        self.to_change_fd_writes.insert(raw_fd as usize)
-                    },
-                    _ => unreachable!("only Read/Write filters are supported")
-                };
-                let maybe_event = if fd_absent {
-                    *events_to_change += 1;
-                    Some(event)
+        let change_event_iter = self
+            .io_pending
+            .iter()
+            .enumerate()
+            .scan(0, |events_to_change, (index, op)| {
+                scanned_till = index;
+                // iterate till hit events_to_change capacity
+                if *events_to_change < max_events_to_change {
+                    let event = op.opcode_ref().as_event(index);
+                    let fd_absent = match event.filter() {
+                        EventFilter::Read(raw_fd) => {
+                            debug_assert!(raw_fd >= 0);
+                            self.to_change_fd_reads.insert(raw_fd as usize)
+                        }
+                        EventFilter::Write(raw_fd) => {
+                            self.to_change_fd_writes.insert(raw_fd as usize)
+                        }
+                        _ => unreachable!("only Read/Write filters are supported"),
+                    };
+                    let maybe_event = if fd_absent {
+                        *events_to_change += 1;
+                        Some(event)
+                    } else {
+                        // postpone the same io operations with the same fd to next `submit`
+                        // iterations
+                        None
+                    };
+                    // will filter skipped events via identity func
+                    Some(maybe_event)
                 } else {
-                    // postpone the same io operations with the same fd to next `submit` iterations
                     None
-                };
-                // will filter skipped events via identity func
-                Some(maybe_event)
-            }
-            else {
-                None
-            }
-
-        }).filter_map(identity);
+                }
+            })
+            .filter_map(identity);
         self.events_to_change.extend(change_event_iter);
 
         #[cfg(feature = "time")]
@@ -250,7 +252,14 @@ impl<'arena> Driver<'arena> {
         // kevent blocks indefinitely when timeout is NULL
         // we provide interface that unblocks when at least one operation is completed
         let timeout = timeout.unwrap_or(Duration::ZERO);
-        let res = unsafe { kevent(self.kqueue.as_fd(), &self.events_to_change, &mut self.ready_events, Some(timeout)) };
+        let res = unsafe {
+            kevent(
+                self.kqueue.as_fd(),
+                &self.events_to_change,
+                &mut self.ready_events,
+                Some(timeout),
+            )
+        };
 
         #[cfg(feature = "time")]
         self.timers.expire_timers(entries);
@@ -264,6 +273,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     fn attach(&mut self, fd: RawFd) -> io::Result<Fd> {
         Ok(Fd::from_raw(fd))
     }
+
     #[inline]
     fn register_fd(&mut self, fd: RawFd, _id: u32) -> io::Result<FixedFd> {
         Ok(FixedFd::from_raw(fd))
@@ -277,10 +287,18 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
     #[inline]
     fn try_cancel(&mut self, user_data: usize) -> Result<(), ()> {
         // we assume cancellations are rare
-        if let Some(pos) = self.squeue.iter().position(|operation| operation.user_data() == user_data) {
+        if let Some(pos) = self
+            .squeue
+            .iter()
+            .position(|operation| operation.user_data() == user_data)
+        {
             let _ = self.squeue.remove(pos);
         }
-        if let Some(pos) = self.io_pending.iter().position(|operation| operation.user_data() == user_data) {
+        if let Some(pos) = self
+            .io_pending
+            .iter()
+            .position(|operation| operation.user_data() == user_data)
+        {
             let _ = self.io_pending.remove(pos);
         }
         Ok(())
