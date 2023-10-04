@@ -19,11 +19,12 @@ The project has different goals:
     * drivers don't own buffers
     * buffers are required to be Unpin
 
-* bias towards IoUring API to achieve zero-cost abstraction on Linux:
+* bias towards `io_uring` API to achieve zero-cost abstraction on Linux:
 
     * fixed size submission queue for operations
     * external runtime could submit an external queue of not yet queued operations as a single batch
     * timers are exposed as `Timeout` operation and use suspend-aware CLOCK_BOOTTIME clock source when it's available
+    * file descriptors could be registered to remove refcounting overhead in `io_uring`
 
 * Async runtime is an example runtime to test implementation of drivers
 
@@ -59,14 +60,19 @@ use completeio::{
 let mut driver = Driver::new().unwrap();
 let file = File::open("Cargo.toml").unwrap();
 // Attach the `RawFd` to driver first.
+//
+// The result is `Fd` attached to the driver.
+// It's possible to register file descriptor instead of attaching.
 let fd = driver.attach(file.as_raw_fd()).unwrap();
 
-// Create operation and push it to the driver.
+// Create IO operation and push it to the driver's submission queue.
 let mut op = ReadAt::new(fd, 0, Vec::with_capacity(4096));
+// We don't pass operation ownership to the driver and have to keep operations
+// until they will be finished
 let mut ops = VecDeque::from([(&mut op, 0).into()]);
 driver.push_queue(&mut ops);
 
-// Poll the driver and wait for IO completed.
+// Submit the queued operations and wait for IO completed.
 let mut entries = ArrayVec::<Entry, 1>::new();
 unsafe {
     driver
