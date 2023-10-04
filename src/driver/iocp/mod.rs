@@ -110,7 +110,7 @@ impl IntoRawFd for socket2::Socket {
 /// Attached file descriptor.
 ///
 /// Can't be moved between threads.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Fd {
     raw_fd: RawFd,
     _not_send_not_sync: PhantomData<*const ()>,
