@@ -7,7 +7,7 @@ pub use crate::driver::time::Timeout;
 pub use crate::driver::unix::op::*;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut},
-    driver::{Fd, OpCode},
+    driver::{Fd, IntoRawFd, OpCode, RawFd},
     syscall,
 };
 
@@ -217,14 +217,43 @@ impl OpCode for Timeout {
     }
 }
 
-/// Close file descriptor.
+fn close_raw_fd(raw_fd: RawFd) -> io::Result<usize> {
+    syscall!(close(raw_fd)).map(|ok| usize::try_from(ok).expect("non negative"))
+}
+
+/// Close attached file descriptor.
 ///
 /// io_uring: it closes in async fashion regular file descriptor
 /// kqueue: runs `close` syscall
 /// IOCP: it checks whether file is socket and executes either `closesocket` or `CloseHandle`
 impl OpCode for Fd {
     fn operate(&mut self) -> Option<io::Result<usize>> {
-        Some(syscall!(close(self.as_raw_fd())).map(|ok| usize::try_from(ok).expect("non negative")))
+        Some(close_raw_fd(self.as_raw_fd()))
+    }
+
+    fn as_event(&self, _: usize) -> Event {
+        unreachable!("Close operation should complete in one shot")
+    }
+}
+
+/// Close some file or socket and set it to None.
+///
+/// io_uring: it closes in async fashion regular file descriptor
+/// kqueue: runs `close` syscall
+/// IOCP: it checks whether file is socket and executes either `closesocket` or `CloseHandle`
+impl<T: IntoRawFd> OpCode for Option<T> {
+    fn operate(&mut self) -> Option<io::Result<usize>> {
+        let maybe_into_raw_fd = std::mem::replace(self, None);
+        let result = if let Some(into_raw_fd) = maybe_into_raw_fd {
+            let fd = into_raw_fd.into_raw_fd();
+            close_raw_fd(fd)
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Value is None. File descriptor is already closed?",
+            ))
+        };
+        Some(result)
     }
 
     fn as_event(&self, _: usize) -> Event {

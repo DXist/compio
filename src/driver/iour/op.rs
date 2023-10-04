@@ -13,7 +13,7 @@ use libc::sockaddr_storage;
 pub use crate::driver::unix::op::*;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut},
-    driver::{Fd, FdOrFixed, OpCode},
+    driver::{Fd, FdOrFixed, IntoRawFd, OpCode},
 };
 
 macro_rules! apply_to_fd_or_fixed {
@@ -147,9 +147,24 @@ impl OpCode for Timeout {
     }
 }
 
-/// Close regular file descriptor.
+/// Close attached file descriptor.
 impl OpCode for Fd {
     fn create_entry(&mut self) -> Entry {
         opcode::Close::new(types::Fd(self.as_raw_fd())).build()
+    }
+}
+
+/// Close some file or socket and set it to None.
+///
+/// If option value is None the operation panics.
+impl<T: IntoRawFd> OpCode for Option<T> {
+    fn create_entry(&mut self) -> Entry {
+        let maybe_into_raw_fd = std::mem::replace(self, None);
+        if let Some(into_raw_fd) = maybe_into_raw_fd {
+            let fd = into_raw_fd.into_raw_fd();
+            opcode::Close::new(types::Fd(fd)).build()
+        } else {
+            panic!("Option<T: IntoRawFd> is None. Can't create Close operation.")
+        }
     }
 }

@@ -81,7 +81,7 @@ fn attach_read_multiple_and_close_attached() {
 }
 
 #[test]
-fn register_read_multiple_and_close_fixed() {
+fn register_read_multiple_and_close_unregister() {
     const TASK_LEN: usize = 3;
     const ENTRIES: u32 = 1024;
     const FILES_TO_REGISTER: u32 = 64;
@@ -112,9 +112,25 @@ fn register_read_multiple_and_close_fixed() {
         e.into_result().unwrap();
     }
 
+    // Close and unregister file using async interface
+
+    // Close operation will replace Some value to None
+    let mut file_to_close = Some(file);
+    let close_op = Operation::new(&mut file_to_close, 7);
+
+    driver
+        .try_push(close_op)
+        .unwrap_or_else(|_| panic!("queue is full"));
+
     driver.unregister_fd(fixed_fd).unwrap();
 
-    let mut entries = ArrayVec::<Entry, 0>::new();
+    // one entry for close operation
+    let mut entries = ArrayVec::<Entry, 1>::new();
 
     unsafe { driver.submit(Some(Duration::from_millis(10)), &mut entries) }.unwrap();
+    unsafe { driver.submit(Some(Duration::from_millis(10)), &mut entries) }.unwrap();
+    assert_eq!(entries.len(), 1);
+    for e in entries {
+        e.into_result().unwrap();
+    }
 }

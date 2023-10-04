@@ -35,7 +35,7 @@ use crate::driver::iocp::TIMER_PENDING;
 pub use crate::driver::time::Timeout;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IntoInner, IoBuf, IoBufMut},
-    driver::{iocp::Overlapped, Fd, OpCode, RawFd},
+    driver::{iocp::Overlapped, Fd, IntoRawFd, OpCode, RawFd},
     syscall,
 };
 
@@ -694,7 +694,32 @@ fn get_sockopt_error(fd: RawFd) -> Result<(), i32> {
     }
 }
 
-/// Close file descriptor.
+fn close_raw_fd(fd: RawFd) -> io::Result<usize> {
+    let res = get_sockopt_error(fd);
+    match res {
+        Err(WSAENOTSOCK) => {
+            // close file handle
+            let closed = unsafe { CloseHandle(fd as _) };
+            if closed == 0 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(0)
+            }
+        }
+        Err(_) => Err(std::io::Error::last_os_error()),
+        Ok(()) => {
+            // close socket
+            let rc = unsafe { closesocket(fd as _) };
+            if rc != 0 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(0)
+            }
+        }
+    }
+}
+
+/// Close attached file descriptor.
 ///
 /// io_uring: it closes in async fashion regular file descriptor
 /// kqueue: runs `close` syscall
@@ -702,32 +727,37 @@ fn get_sockopt_error(fd: RawFd) -> Result<(), i32> {
 impl OpCode for Fd {
     unsafe fn operate(&mut self, _user_data: usize) -> Poll<io::Result<usize>> {
         let fd = self.as_raw_fd();
-        let res = get_sockopt_error(fd);
-        let result = match res {
-            Err(WSAENOTSOCK) => {
-                // close file handle
-                let closed = CloseHandle(fd as _);
-                if closed == 0 {
-                    Err(std::io::Error::last_os_error())
-                } else {
-                    Ok(0)
-                }
-            }
-            Err(_) => Err(std::io::Error::last_os_error()),
-            Ok(()) => {
-                // close socket
-                let rc = closesocket(fd as _);
-                if rc != 0 {
-                    Err(std::io::Error::last_os_error())
-                } else {
-                    Ok(0)
-                }
-            }
+        Poll::Ready(close_raw_fd(fd))
+    }
+
+    fn overlapped(&mut self) -> &mut OVERLAPPED {
+        unimplemented!("Fd close is synchonous")
+    }
+}
+
+/// Close some file or socket and set it to None.
+///
+/// If `Option` value then `io::ErrorKind::InvalidInput` is returned.
+///
+/// io_uring: it closes in async fashion regular file descriptor
+/// kqueue: runs `close` syscall
+/// IOCP: it checks whether file is socket and executes either `closesocket` or `CloseHandle`
+impl<T: IntoRawFd> OpCode for Option<T> {
+    unsafe fn operate(&mut self, _user_data: usize) -> Poll<io::Result<usize>> {
+        let maybe_into_raw_fd = std::mem::replace(self, None);
+        let result = if let Some(into_raw_fd) = maybe_into_raw_fd {
+            let fd = into_raw_fd.into_raw_fd();
+            close_raw_fd(fd)
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Value is None. File descriptor is already closed?",
+            ))
         };
         Poll::Ready(result)
     }
 
     fn overlapped(&mut self) -> &mut OVERLAPPED {
-        unimplemented!("Fd close is synchonous")
+        unimplemented!("Option<T: IntoRawFd> close is synchonous")
     }
 }
