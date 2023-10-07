@@ -342,7 +342,9 @@ impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvMsgImpl<'arena, T> {
     type Inner = (T, SockAddr);
 
     fn into_inner(self) -> Self::Inner {
-        (self.buffer, unsafe { SockAddr::new(self.addr, self.msg.msg_namelen) })
+        (self.buffer, unsafe {
+            SockAddr::new(self.addr, self.msg.msg_namelen)
+        })
     }
 }
 

@@ -355,24 +355,28 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         timeout: Option<Duration>,
         entries: &mut impl Extend<Entry>,
     ) -> io::Result<()> {
-        let oneshot_completed_iter = self.squeue.drain(..).enumerate().filter_map(|(idx, mut operation)| {
-            let user_data = operation.user_data();
-            // we require Unpin buffers - so no need to pin
-            let op = operation.opcode();
-            let result = op.operate(user_data);
-            match result {
-                #[cfg(feature = "time")]
-                Poll::Ready(Ok(TIMER_PENDING)) => {
-                    self.timers.insert(user_data, op.timer_delay());
-                    None
-                }
-                Poll::Ready(result) => {
-                    self.squeue_drained_till = idx + 1;
-                    Some(Entry::new(user_data, result))
-                }
-                _ => None
-            }
-        });
+        let oneshot_completed_iter =
+            self.squeue
+                .drain(..)
+                .enumerate()
+                .filter_map(|(idx, mut operation)| {
+                    let user_data = operation.user_data();
+                    // we require Unpin buffers - so no need to pin
+                    let op = operation.opcode();
+                    let result = op.operate(user_data);
+                    match result {
+                        #[cfg(feature = "time")]
+                        Poll::Ready(Ok(TIMER_PENDING)) => {
+                            self.timers.insert(user_data, op.timer_delay());
+                            None
+                        }
+                        Poll::Ready(result) => {
+                            self.squeue_drained_till = idx + 1;
+                            Some(Entry::new(user_data, result))
+                        }
+                        _ => None,
+                    }
+                });
 
         entries.extend(oneshot_completed_iter);
         self.squeue_drained_till = self.squeue.capacity();

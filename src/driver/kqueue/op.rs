@@ -1,18 +1,15 @@
-use std::io;
-use std::mem::size_of;
-use std::marker::PhantomData;
-use socket2::SockAddr;
+use std::{io, marker::PhantomData, mem::size_of};
 
+use libc::{sockaddr, sockaddr_storage, socklen_t};
 use rustix::event::kqueue::{Event, EventFilter, EventFlags};
-use libc::{sockaddr_storage, sockaddr, socklen_t};
+use socket2::SockAddr;
 
 #[cfg(feature = "time")]
 pub use crate::driver::time::Timeout;
 pub use crate::driver::unix::op::*;
-use crate::driver::unix::IntoFdOrFixed;
 use crate::{
-    buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut, IntoInner},
-    driver::{Fd, IntoRawFd, OpCode, RawFd, FdOrFixed},
+    buf::{AsIoSlices, AsIoSlicesMut, IntoInner, IoBuf, IoBufMut},
+    driver::{unix::IntoFdOrFixed, Fd, FdOrFixed, IntoRawFd, OpCode, RawFd},
     syscall,
 };
 
@@ -264,7 +261,9 @@ impl<'arena, T: IoBufMut<'arena>> IntoInner for RecvFrom<'arena, T> {
     type Inner = (T, SockAddr);
 
     fn into_inner(self) -> Self::Inner {
-        (self.buffer, unsafe { SockAddr::new(self.addr, self.socklen) })
+        (self.buffer, unsafe {
+            SockAddr::new(self.addr, self.socklen)
+        })
     }
 }
 

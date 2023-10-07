@@ -34,7 +34,7 @@ use crate::driver::iocp::TIMER_PENDING;
 #[cfg(feature = "time")]
 pub use crate::driver::time::Timeout;
 use crate::{
-    buf::{AsIoSlices, AsIoSlicesMut, IntoInner, IoBuf, IoBufMut, BufWrapper, BufWrapperMut},
+    buf::{AsIoSlices, AsIoSlicesMut, BufWrapper, BufWrapperMut, IntoInner, IoBuf, IoBufMut},
     driver::{iocp::Overlapped, Fd, IntoRawFd, OpCode, RawFd},
     syscall,
 };
@@ -506,7 +506,7 @@ impl OpCode for Accept {
 
 /// Receive a single piece of data in a single buffer from remote.
 pub struct Recv<'arena, T: IoBufMut<'arena>> {
-    inner: RecvVectoredImpl<'arena, BufWrapperMut<'arena, T>>
+    inner: RecvVectoredImpl<'arena, BufWrapperMut<'arena, T>>,
 }
 
 impl<'arena, T: IoBufMut<'arena>> Recv<'arena, T> {
@@ -514,7 +514,7 @@ impl<'arena, T: IoBufMut<'arena>> Recv<'arena, T> {
     pub fn new(fd: Fd, buffer: T) -> Self {
         // SAFETY: buffer is Unpin, IoSliceMut is Unpin as well
         Self {
-            inner: RecvVectoredImpl::new(fd, BufWrapperMut::from(buffer))
+            inner: RecvVectoredImpl::new(fd, BufWrapperMut::from(buffer)),
         }
     }
 }
@@ -593,7 +593,7 @@ impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvVectoredImpl<'arena, T> {
 
 /// Send a single piece of data from a single buffer to remote.
 pub struct Send<'arena, T: IoBuf<'arena>> {
-    inner: SendVectoredImpl<'arena, BufWrapper<'arena, T>>
+    inner: SendVectoredImpl<'arena, BufWrapper<'arena, T>>,
 }
 
 impl<'arena, T: IoBuf<'arena>> Send<'arena, T> {
@@ -601,7 +601,7 @@ impl<'arena, T: IoBuf<'arena>> Send<'arena, T> {
     pub fn new(fd: Fd, buffer: T) -> Self {
         // SAFETY: buffer is Unpin, IoSliceMut is Unpin as well
         Self {
-            inner: SendVectoredImpl::new(fd, BufWrapper::from(buffer))
+            inner: SendVectoredImpl::new(fd, BufWrapper::from(buffer)),
         }
     }
 }
@@ -677,7 +677,7 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendVectoredImpl<'arena, T> {
 
 /// Receive a single piece of data and source address using a single buffer.
 pub struct RecvFrom<'arena, T: IoBufMut<'arena>> {
-    inner: RecvMsgImpl<'arena, BufWrapperMut<'arena, T>>
+    inner: RecvMsgImpl<'arena, BufWrapperMut<'arena, T>>,
 }
 
 impl<'arena, T: IoBufMut<'arena>> RecvFrom<'arena, T> {
@@ -685,7 +685,7 @@ impl<'arena, T: IoBufMut<'arena>> RecvFrom<'arena, T> {
     pub fn new(fd: Fd, buffer: T) -> Self {
         // SAFETY: buffer is Unpin, IoSliceMut is Unpin as well
         Self {
-            inner: RecvMsgImpl::new(fd, BufWrapperMut::from(buffer))
+            inner: RecvMsgImpl::new(fd, BufWrapperMut::from(buffer)),
         }
     }
 }
@@ -737,7 +737,9 @@ impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvMsgImpl<'arena, T> {
     type Inner = (T, SockAddr);
 
     fn into_inner(self) -> Self::Inner {
-        (self.buffer, unsafe { SockAddr::new(self.addr, self.addr_len) })
+        (self.buffer, unsafe {
+            SockAddr::new(self.addr, self.addr_len)
+        })
     }
 }
 
@@ -770,7 +772,7 @@ impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvMsgImpl<'arena, T> {
 
 /// Send a single piece of data from a single buffer to the specified address.
 pub struct SendTo<'arena, T: IoBuf<'arena>> {
-    inner: SendMsgImpl<'arena, BufWrapper<'arena, T>>
+    inner: SendMsgImpl<'arena, BufWrapper<'arena, T>>,
 }
 
 impl<'arena, T: IoBuf<'arena>> SendTo<'arena, T> {
@@ -778,7 +780,7 @@ impl<'arena, T: IoBuf<'arena>> SendTo<'arena, T> {
     pub fn new(fd: Fd, buffer: T, addr: SockAddr) -> Self {
         // SAFETY: buffer is Unpin, IoSliceMut is Unpin as well
         Self {
-            inner: SendMsgImpl::new(fd, BufWrapper::from(buffer), addr)
+            inner: SendMsgImpl::new(fd, BufWrapper::from(buffer), addr),
         }
     }
 }

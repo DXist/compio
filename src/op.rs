@@ -10,8 +10,8 @@ pub use crate::driver::op::ConnectNamedPipe;
 #[cfg(feature = "time")]
 pub use crate::driver::op::Timeout;
 pub use crate::driver::op::{
-    Accept, Connect, Read, ReadAt, Recv, RecvFrom, RecvMsgImpl, RecvVectoredImpl, Send, SendTo, SendVectoredImpl, SendMsgImpl, Sync,
-    Write, WriteAt,
+    Accept, Connect, Read, ReadAt, Recv, RecvFrom, RecvMsgImpl, RecvVectoredImpl, Send,
+    SendMsgImpl, SendTo, SendVectoredImpl, Sync, Write, WriteAt,
 };
 use crate::{
     buf::{AsIoSlicesMut, BufWrapperMut, IoBufMut, VectoredBufWrapper},
@@ -81,9 +81,7 @@ pub(crate) trait RecvResultExt {
     fn map_addr(self) -> Self::RecvFromResult;
 }
 
-impl<'arena, T: 'arena> RecvResultExt
-    for BufResult<'arena, usize, (T, SockAddr)>
-{
+impl<'arena, T: 'arena> RecvResultExt for BufResult<'arena, usize, (T, SockAddr)> {
     type RecvFromResult = BufResult<'arena, (usize, SockAddr), T>;
 
     fn map_addr(self) -> Self::RecvFromResult {

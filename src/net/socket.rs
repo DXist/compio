@@ -11,7 +11,7 @@ use crate::{
     buf_try,
     driver::Fd,
     op::{
-        Accept, Connect, Recv, RecvFrom, RecvResultExt, RecvFromVectored, RecvVectored, Send,
+        Accept, Connect, Recv, RecvFrom, RecvFromVectored, RecvResultExt, RecvVectored, Send,
         SendTo, SendToVectored, SendVectored, UpdateBufferLen,
     },
     task::RUNTIME,

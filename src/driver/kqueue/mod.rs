@@ -131,29 +131,33 @@ impl<'arena> Driver<'arena> {
 
     // operate pushed operations
     fn operate_squeue(&mut self, entries: &mut impl Extend<Entry>) {
-        let oneshot_completed_iter = self.squeue.drain(..).enumerate().filter_map(|(idx, mut op)| {
-            let user_data = op.user_data();
-            let opcode = op.opcode();
-            // io buffers are Unpin so no need to pin
-            match opcode.operate() {
-                // no result => io is pending
-                None => {
-                    self.io_pending.push_back(op);
-                    None
-                }
-                Some(res) => match res {
-                    #[cfg(feature = "time")]
-                    Ok(TIMER_PENDING) => {
-                        self.timers.insert(user_data, opcode.timer_delay());
-                        None
+        let oneshot_completed_iter =
+            self.squeue
+                .drain(..)
+                .enumerate()
+                .filter_map(|(idx, mut op)| {
+                    let user_data = op.user_data();
+                    let opcode = op.opcode();
+                    // io buffers are Unpin so no need to pin
+                    match opcode.operate() {
+                        // no result => io is pending
+                        None => {
+                            self.io_pending.push_back(op);
+                            None
+                        }
+                        Some(res) => match res {
+                            #[cfg(feature = "time")]
+                            Ok(TIMER_PENDING) => {
+                                self.timers.insert(user_data, opcode.timer_delay());
+                                None
+                            }
+                            res => {
+                                self.squeue_drained_till = idx + 1;
+                                Some(Entry::new(user_data, res))
+                            }
+                        },
                     }
-                    res => {
-                        self.squeue_drained_till = idx + 1;
-                        Some(Entry::new(user_data, res))
-                    }
-                },
-            }
-        });
+                });
 
         entries.extend(oneshot_completed_iter);
         self.squeue_drained_till = self.squeue.capacity();
