@@ -347,7 +347,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
 
     #[inline]
     fn capacity_left(&self) -> usize {
-        self.squeue.capacity() - self.squeue.len()
+        self.squeue_drained_till.saturating_sub(self.squeue.len())
     }
 
     unsafe fn submit(
