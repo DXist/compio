@@ -194,7 +194,7 @@ impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendImpl<'arena, T> {
 }
 
 /// Receive data and source address.
-pub struct RecvFromImpl<'arena, T: AsIoSlicesMut<'arena>> {
+pub struct RecvMsgImpl<'arena, T: AsIoSlicesMut<'arena>> {
     pub(crate) fd: FdOrFixed,
     pub(crate) buffer: T,
     pub(crate) addr: sockaddr_storage,
@@ -202,7 +202,7 @@ pub struct RecvFromImpl<'arena, T: AsIoSlicesMut<'arena>> {
     _lifetime: PhantomData<&'arena ()>,
 }
 
-impl<'arena, T: AsIoSlicesMut<'arena>> RecvFromImpl<'arena, T> {
+impl<'arena, T: AsIoSlicesMut<'arena>> RecvMsgImpl<'arena, T> {
     /// Create [`RecvFrom`] or [`RecvFromVectored`].
     pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T) -> Self {
         Self {
@@ -234,7 +234,7 @@ impl<'arena, T: AsIoSlicesMut<'arena>> RecvFromImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvFromImpl<'arena, T> {
+impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvMsgImpl<'arena, T> {
     type Inner = (T, sockaddr_storage, socklen_t);
 
     fn into_inner(self) -> Self::Inner {

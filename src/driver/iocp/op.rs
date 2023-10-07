@@ -512,7 +512,7 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendImpl<'arena, T> {
 }
 
 /// Receive data and source address.
-pub struct RecvFromImpl<'arena, T: AsIoSlicesMut<'arena>> {
+pub struct RecvMsgImpl<'arena, T: AsIoSlicesMut<'arena>> {
     pub(crate) fd: Fd,
     pub(crate) buffer: T,
     pub(crate) addr: SOCKADDR_STORAGE,
@@ -521,7 +521,7 @@ pub struct RecvFromImpl<'arena, T: AsIoSlicesMut<'arena>> {
     _lifetime: PhantomData<&'arena ()>,
 }
 
-impl<'arena, T: AsIoSlicesMut<'arena>> RecvFromImpl<'arena, T> {
+impl<'arena, T: AsIoSlicesMut<'arena>> RecvMsgImpl<'arena, T> {
     /// Create [`RecvFrom`] or [`RecvFromVectored`].
     pub fn new(fd: Fd, buffer: T) -> Self {
         Self {
@@ -535,7 +535,7 @@ impl<'arena, T: AsIoSlicesMut<'arena>> RecvFromImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvFromImpl<'arena, T> {
+impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvMsgImpl<'arena, T> {
     type Inner = (T, SOCKADDR_STORAGE, socklen_t);
 
     fn into_inner(self) -> Self::Inner {
@@ -543,7 +543,7 @@ impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvFromImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvFromImpl<'arena, T> {
+impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvMsgImpl<'arena, T> {
     unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
         self.overlapped.user_data = user_data;
         let fd = self.fd.as_raw_fd();

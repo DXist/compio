@@ -169,7 +169,7 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvFromImpl<'arena, T> {
+impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvMsgImpl<'arena, T> {
     fn operate(&mut self) -> Option<io::Result<usize>> {
         if self.msg.msg_namelen == 0 {
             let fd = self.fd;

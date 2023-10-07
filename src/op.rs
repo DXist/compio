@@ -10,7 +10,7 @@ pub use crate::driver::op::ConnectNamedPipe;
 #[cfg(feature = "time")]
 pub use crate::driver::op::Timeout;
 pub use crate::driver::op::{
-    Accept, Connect, ReadAt, RecvFromImpl, RecvImpl, SendImpl, SendToImpl, Sync, WriteAt,
+    Accept, Connect, ReadAt, RecvMsgImpl, RecvImpl, SendImpl, SendToImpl, Sync, WriteAt,
 };
 use crate::{
     buf::{AsIoSlicesMut, BufWrapperMut, IoBufMut, VectoredBufWrapper},
@@ -107,9 +107,9 @@ pub type Send<'arena, T> = SendImpl<'arena, T>;
 pub type SendVectored<'arena, T> = SendImpl<'arena, VectoredBufWrapper<'arena, T>>;
 
 /// Receive data and address with one buffer.
-pub type RecvFrom<'arena, T> = RecvFromImpl<'arena, T>;
+pub type RecvFrom<'arena, T> = RecvMsgImpl<'arena, T>;
 /// Receive data and address with vectored buffer.
-pub type RecvFromVectored<'arena, T> = RecvFromImpl<'arena, VectoredBufWrapper<'arena, T>>;
+pub type RecvFromVectored<'arena, T> = RecvMsgImpl<'arena, VectoredBufWrapper<'arena, T>>;
 
 /// Send data to address with one buffer.
 pub type SendTo<'arena, T> = SendToImpl<'arena, T>;

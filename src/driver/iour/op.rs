@@ -91,7 +91,7 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvFromImpl<'arena, T> {
+impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvMsgImpl<'arena, T> {
     #[allow(clippy::no_effect)]
     fn create_entry(&mut self) -> Entry {
         let fd = self.fd;
