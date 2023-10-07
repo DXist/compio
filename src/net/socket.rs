@@ -7,11 +7,11 @@ use crate::driver::AsRawFd;
 use crate::impl_raw_fd;
 #[cfg(feature = "runtime")]
 use crate::{
-    buf::{BufWrapper, BufWrapperMut, IntoInner, IoBuf, IoBufMut, VectoredBufWrapper},
+    buf::{IntoInner, IoBuf, IoBufMut, VectoredBufWrapper},
     buf_try,
     driver::Fd,
     op::{
-        Accept, Connect, Recv, RecvFrom, RecvFromVectored, RecvResultExt, RecvVectored, Send,
+        Accept, Connect, Recv, RecvFrom, RecvResultExt, RecvFromVectored, RecvVectored, Send,
         SendTo, SendToVectored, SendVectored, UpdateBufferLen,
     },
     task::RUNTIME,
@@ -135,13 +135,12 @@ impl Socket {
     #[cfg(feature = "runtime")]
     pub async fn recv<T: IoBufMut<'static>>(&self, buffer: T) -> BufResult<usize, T> {
         let (fd, buffer) = buf_try!(self.attach(), buffer);
-        let op = Recv::new(fd, BufWrapperMut::from(buffer));
+        let op = Recv::new(fd, buffer);
         RUNTIME
             .with(|runtime| runtime.submit(op))
             .await
             .into_inner()
             .update_buffer_len()
-            .into_inner()
     }
 
     #[cfg(feature = "runtime")]
@@ -181,11 +180,10 @@ impl Socket {
     #[cfg(feature = "runtime")]
     pub async fn send<T: IoBuf<'static>>(&self, buffer: T) -> BufResult<usize, T> {
         let (fd, buffer) = buf_try!(self.attach(), buffer);
-        let op = Send::new(fd, BufWrapper::from(buffer));
+        let op = Send::new(fd, buffer);
         RUNTIME
             .with(|runtime| runtime.submit(op))
             .await
-            .into_inner()
             .into_inner()
     }
 
@@ -221,14 +219,13 @@ impl Socket {
         buffer: T,
     ) -> BufResult<(usize, SockAddr), T> {
         let (fd, buffer) = buf_try!(self.attach(), buffer);
-        let op = RecvFrom::new(fd, BufWrapperMut::from(buffer));
+        let op = RecvFrom::new(fd, buffer);
         RUNTIME
             .with(|runtime| runtime.submit(op))
             .await
             .into_inner()
             .map_addr()
             .update_buffer_len()
-            .into_inner()
     }
 
     #[cfg(feature = "runtime")]
@@ -253,11 +250,10 @@ impl Socket {
         addr: &SockAddr,
     ) -> BufResult<usize, T> {
         let (fd, buffer) = buf_try!(self.attach(), buffer);
-        let op = SendTo::new(fd, BufWrapper::from(buffer), addr.clone());
+        let op = SendTo::new(fd, buffer, addr.clone());
         RUNTIME
             .with(|runtime| runtime.submit(op))
             .await
-            .into_inner()
             .into_inner()
     }
 

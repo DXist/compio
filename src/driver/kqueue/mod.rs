@@ -5,7 +5,6 @@ pub use std::os::fd::{AsFd, AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
 use std::{collections::VecDeque, convert::identity, io, marker::PhantomData, time::Duration};
 
 use bit_set::BitSet;
-pub(crate) use libc::{sockaddr_storage, socklen_t};
 use rustix::event::kqueue::{kevent, kqueue, Event, EventFilter, EventFlags};
 
 #[cfg(feature = "time")]

@@ -1,13 +1,18 @@
 use std::io;
+use std::mem::size_of;
+use std::marker::PhantomData;
+use socket2::SockAddr;
 
 use rustix::event::kqueue::{Event, EventFilter, EventFlags};
+use libc::{sockaddr_storage, sockaddr, socklen_t};
 
 #[cfg(feature = "time")]
 pub use crate::driver::time::Timeout;
 pub use crate::driver::unix::op::*;
+use crate::driver::unix::IntoFdOrFixed;
 use crate::{
-    buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut},
-    driver::{Fd, IntoRawFd, OpCode, RawFd},
+    buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut, IntoInner},
+    driver::{Fd, IntoRawFd, OpCode, RawFd, FdOrFixed},
     syscall,
 };
 
@@ -39,6 +44,26 @@ macro_rules! write_filter_event {
 }
 use write_filter_event;
 
+impl<'arena, T: IoBufMut<'arena>> OpCode for Read<'arena, T> {
+    fn operate(&mut self) -> Option<io::Result<usize>> {
+        let fd = self.fd.as_raw_fd();
+        // SAFETY: slice into buffer is Unpin
+        let slice = self.buffer.as_uninit_slice();
+
+        syscall!(
+            maybe_block read(
+                fd,
+                slice.as_mut_ptr() as _,
+                slice.len() as _,
+            )
+        )
+    }
+
+    fn as_event(&self, user_data: usize) -> Event {
+        read_filter_event!(self, user_data)
+    }
+}
+
 impl<'arena, T: IoBufMut<'arena>> OpCode for ReadAt<'arena, T> {
     fn operate(&mut self) -> Option<io::Result<usize>> {
         let fd = self.fd.as_raw_fd();
@@ -57,6 +82,25 @@ impl<'arena, T: IoBufMut<'arena>> OpCode for ReadAt<'arena, T> {
 
     fn as_event(&self, user_data: usize) -> Event {
         read_filter_event!(self, user_data)
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> OpCode for Write<'arena, T> {
+    fn operate(&mut self) -> Option<io::Result<usize>> {
+        // SAFETY: buffer is Unpin
+        let slice = self.buffer.as_slice();
+
+        syscall!(
+            maybe_block write(
+                self.fd.as_raw_fd(),
+                slice.as_ptr() as _,
+                slice.len() as _,
+            )
+        )
+    }
+
+    fn as_event(&self, user_data: usize) -> Event {
+        write_filter_event!(self, user_data)
     }
 }
 
@@ -144,12 +188,12 @@ impl OpCode for Connect {
     }
 }
 
-impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvImpl<'arena, T> {
+impl<'arena, T: IoBufMut<'arena>> OpCode for Recv<'arena, T> {
     fn operate(&mut self) -> Option<io::Result<usize>> {
         let fd = self.fd;
-        // SAFETY: IoSliceMut is Unpin
-        let slices = unsafe { self.buffer.as_io_slices_mut() };
-        syscall!(maybe_block readv(fd.as_raw_fd(), slices.as_mut_ptr() as _, slices.len() as _,))
+        // SAFETY: IoBufMut is Unpin
+        let slice = self.buffer.as_uninit_slice();
+        syscall!(maybe_block recv(fd.as_raw_fd(), slice.as_mut_ptr() as _, slice.len() as _, 0))
     }
 
     fn as_event(&self, user_data: usize) -> Event {
@@ -157,7 +201,32 @@ impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlices<'arena>> OpCode for SendImpl<'arena, T> {
+impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvVectoredImpl<'arena, T> {
+    fn operate(&mut self) -> Option<io::Result<usize>> {
+        let fd = self.fd;
+        // SAFETY: IoSliceMut is Unpin
+        let slices = unsafe { self.buffer.as_io_slices_mut() };
+        syscall!(maybe_block readv(fd.as_raw_fd(), slices.as_mut_ptr() as _, slices.len() as _))
+    }
+
+    fn as_event(&self, user_data: usize) -> Event {
+        read_filter_event!(self, user_data)
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> OpCode for Send<'arena, T> {
+    fn operate(&mut self) -> Option<io::Result<usize>> {
+        // SAFETY: IoBuf is Unpin
+        let slice = self.buffer.as_slice();
+        syscall!(maybe_block send(self.fd.as_raw_fd(), slice.as_ptr() as _, slice.len() as _, 0))
+    }
+
+    fn as_event(&self, user_data: usize) -> Event {
+        write_filter_event!(self, user_data)
+    }
+}
+
+impl<'arena, T: AsIoSlices<'arena>> OpCode for SendVectoredImpl<'arena, T> {
     fn operate(&mut self) -> Option<io::Result<usize>> {
         // SAFETY: IoSlice is Unpin
         let slices = unsafe { self.buffer.as_io_slices() };
@@ -169,6 +238,46 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendImpl<'arena, T> {
     }
 }
 
+/// Receive a single piece of data and source address using a single buffer.
+pub struct RecvFrom<'arena, T: IoBufMut<'arena>> {
+    fd: FdOrFixed,
+    buffer: T,
+    addr: sockaddr_storage,
+    socklen: socklen_t,
+    _lifetime: PhantomData<&'arena ()>,
+}
+
+impl<'arena, T: IoBufMut<'arena>> RecvFrom<'arena, T> {
+    /// Create [`RecvFrom`].
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T) -> Self {
+        Self {
+            fd: fd.into(),
+            buffer,
+            addr: unsafe { std::mem::zeroed() },
+            socklen: size_of::<sockaddr_storage>() as socklen_t,
+            _lifetime: PhantomData,
+        }
+    }
+}
+
+impl<'arena, T: IoBufMut<'arena>> IntoInner for RecvFrom<'arena, T> {
+    type Inner = (T, SockAddr);
+
+    fn into_inner(self) -> Self::Inner {
+        (self.buffer, unsafe { SockAddr::new(self.addr, self.socklen) })
+    }
+}
+
+impl<'arena, T: IoBufMut<'arena>> OpCode for RecvFrom<'arena, T> {
+    fn operate(&mut self) -> Option<io::Result<usize>> {
+        let slice = self.buffer.as_uninit_slice();
+        syscall!(maybe_block recvfrom(self.fd.as_raw_fd(), slice.as_mut_ptr() as *mut libc::c_void, slice.len(), 0, &mut self.addr as *mut sockaddr_storage as *mut sockaddr, &mut self.socklen as *mut socklen_t))
+    }
+
+    fn as_event(&self, user_data: usize) -> Event {
+        read_filter_event!(self, user_data)
+    }
+}
 impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvMsgImpl<'arena, T> {
     fn operate(&mut self) -> Option<io::Result<usize>> {
         if self.msg.msg_namelen == 0 {
@@ -185,7 +294,46 @@ impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvMsgImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlices<'arena>> OpCode for SendToImpl<'arena, T> {
+/// Send a single piece of data from a single buffer to the specified address.
+pub struct SendTo<'arena, T: IoBuf<'arena>> {
+    fd: FdOrFixed,
+    buffer: T,
+    addr: SockAddr,
+    _lifetime: PhantomData<&'arena ()>,
+}
+
+impl<'arena, T: IoBuf<'arena>> SendTo<'arena, T> {
+    /// Create [`SendTo`].
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T, addr: SockAddr) -> Self {
+        Self {
+            fd: fd.into(),
+            buffer,
+            addr,
+            _lifetime: PhantomData,
+        }
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> IntoInner for SendTo<'arena, T> {
+    type Inner = T;
+
+    fn into_inner(self) -> Self::Inner {
+        self.buffer
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> OpCode for SendTo<'arena, T> {
+    fn operate(&mut self) -> Option<io::Result<usize>> {
+        let slice = self.buffer.as_slice();
+        syscall!(maybe_block sendto(self.fd.as_raw_fd(), slice.as_ptr() as *const libc::c_void, slice.len(), 0, self.addr.as_ptr(), self.addr.len()))
+    }
+
+    fn as_event(&self, user_data: usize) -> Event {
+        write_filter_event!(self, user_data)
+    }
+}
+
+impl<'arena, T: AsIoSlices<'arena>> OpCode for SendMsgImpl<'arena, T> {
     fn operate(&mut self) -> Option<io::Result<usize>> {
         if self.msg.msg_namelen == 0 {
             let fd = self.fd;

@@ -8,6 +8,32 @@ use crate::{
     driver::{unix::IntoFdOrFixed, FdOrFixed},
 };
 
+/// Read a nonseekable file into specified buffer.
+pub struct Read<'arena, T: IoBufMut<'arena>> {
+    pub(crate) fd: FdOrFixed,
+    pub(crate) buffer: T,
+    _lifetime: PhantomData<&'arena ()>,
+}
+
+impl<'arena, T: IoBufMut<'arena>> Read<'arena, T> {
+    /// Create [`Read`].
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T) -> Self {
+        Self {
+            fd: fd.into(),
+            buffer,
+            _lifetime: PhantomData,
+        }
+    }
+}
+
+impl<'arena, T: IoBufMut<'arena>> IntoInner for Read<'arena, T> {
+    type Inner = T;
+
+    fn into_inner(self) -> Self::Inner {
+        self.buffer
+    }
+}
+
 /// Read a file at specified position into specified buffer.
 pub struct ReadAt<'arena, T: IoBufMut<'arena>> {
     pub(crate) fd: FdOrFixed,
@@ -29,6 +55,32 @@ impl<'arena, T: IoBufMut<'arena>> ReadAt<'arena, T> {
 }
 
 impl<'arena, T: IoBufMut<'arena>> IntoInner for ReadAt<'arena, T> {
+    type Inner = T;
+
+    fn into_inner(self) -> Self::Inner {
+        self.buffer
+    }
+}
+
+/// Write a nonseekable file from specified buffer.
+pub struct Write<'arena, T: IoBuf<'arena>> {
+    pub(crate) fd: FdOrFixed,
+    pub(crate) buffer: T,
+    _lifetime: PhantomData<&'arena ()>,
+}
+
+impl<'arena, T: IoBuf<'arena>> Write<'arena, T> {
+    /// Create [`Write`].
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T) -> Self {
+        Self {
+            fd: fd.into(),
+            buffer,
+            _lifetime: PhantomData,
+        }
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> IntoInner for Write<'arena, T> {
     type Inner = T;
 
     fn into_inner(self) -> Self::Inner {
@@ -141,15 +193,15 @@ impl Sync {
     }
 }
 
-/// Receive data from remote.
-pub struct RecvImpl<'arena, T: AsIoSlicesMut<'arena>> {
+/// Receive a single piece of data in a single buffer from remote.
+pub struct Recv<'arena, T: IoBufMut<'arena>> {
     pub(crate) fd: FdOrFixed,
     pub(crate) buffer: T,
     _lifetime: PhantomData<&'arena ()>,
 }
 
-impl<'arena, T: AsIoSlicesMut<'arena>> RecvImpl<'arena, T> {
-    /// Create [`Recv`] or [`RecvVectored`].
+impl<'arena, T: IoBufMut<'arena>> Recv<'arena, T> {
+    /// Create [`Recv`].
     pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T) -> Self {
         Self {
             fd: fd.into(),
@@ -159,7 +211,7 @@ impl<'arena, T: AsIoSlicesMut<'arena>> RecvImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvImpl<'arena, T> {
+impl<'arena, T: IoBufMut<'arena>> IntoInner for Recv<'arena, T> {
     type Inner = T;
 
     fn into_inner(self) -> Self::Inner {
@@ -167,15 +219,15 @@ impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvImpl<'arena, T> {
     }
 }
 
-/// Send data to remote.
-pub struct SendImpl<'arena, T: AsIoSlices<'arena>> {
+/// Receive a single piece of data into scattered buffers from remote.
+pub struct RecvVectoredImpl<'arena, T: AsIoSlicesMut<'arena>> {
     pub(crate) fd: FdOrFixed,
     pub(crate) buffer: T,
     _lifetime: PhantomData<&'arena ()>,
 }
 
-impl<'arena, T: AsIoSlices<'arena>> SendImpl<'arena, T> {
-    /// Create [`Send`] or [`SendVectored`].
+impl<'arena, T: AsIoSlicesMut<'arena>> RecvVectoredImpl<'arena, T> {
+    /// Create [`RecvVectored`].
     pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T) -> Self {
         Self {
             fd: fd.into(),
@@ -185,7 +237,7 @@ impl<'arena, T: AsIoSlices<'arena>> SendImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendImpl<'arena, T> {
+impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvVectoredImpl<'arena, T> {
     type Inner = T;
 
     fn into_inner(self) -> Self::Inner {
@@ -193,7 +245,59 @@ impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendImpl<'arena, T> {
     }
 }
 
-/// Receive data and source address.
+/// Send a single piece of data from a single buffer to remote.
+pub struct Send<'arena, T: IoBuf<'arena>> {
+    pub(crate) fd: FdOrFixed,
+    pub(crate) buffer: T,
+    _lifetime: PhantomData<&'arena ()>,
+}
+
+impl<'arena, T: IoBuf<'arena>> Send<'arena, T> {
+    /// Create [`Send`].
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T) -> Self {
+        Self {
+            fd: fd.into(),
+            buffer,
+            _lifetime: PhantomData,
+        }
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> IntoInner for Send<'arena, T> {
+    type Inner = T;
+
+    fn into_inner(self) -> Self::Inner {
+        self.buffer
+    }
+}
+
+/// Send a single piece of data to remote using scattered buffers.
+pub struct SendVectoredImpl<'arena, T: AsIoSlices<'arena>> {
+    pub(crate) fd: FdOrFixed,
+    pub(crate) buffer: T,
+    _lifetime: PhantomData<&'arena ()>,
+}
+
+impl<'arena, T: AsIoSlices<'arena>> SendVectoredImpl<'arena, T> {
+    /// Create [`SendVectored`].
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T) -> Self {
+        Self {
+            fd: fd.into(),
+            buffer,
+            _lifetime: PhantomData,
+        }
+    }
+}
+
+impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendVectoredImpl<'arena, T> {
+    type Inner = T;
+
+    fn into_inner(self) -> Self::Inner {
+        self.buffer
+    }
+}
+
+/// Receive a single piece of data and source address using scattered buffers.
 pub struct RecvMsgImpl<'arena, T: AsIoSlicesMut<'arena>> {
     pub(crate) fd: FdOrFixed,
     pub(crate) buffer: T,
@@ -203,7 +307,7 @@ pub struct RecvMsgImpl<'arena, T: AsIoSlicesMut<'arena>> {
 }
 
 impl<'arena, T: AsIoSlicesMut<'arena>> RecvMsgImpl<'arena, T> {
-    /// Create [`RecvFrom`] or [`RecvFromVectored`].
+    /// Create [`RecvFromVectored`].
     pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T) -> Self {
         Self {
             fd: fd.into(),
@@ -235,15 +339,15 @@ impl<'arena, T: AsIoSlicesMut<'arena>> RecvMsgImpl<'arena, T> {
 }
 
 impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvMsgImpl<'arena, T> {
-    type Inner = (T, sockaddr_storage, socklen_t);
+    type Inner = (T, SockAddr);
 
     fn into_inner(self) -> Self::Inner {
-        (self.buffer, self.addr, self.msg.msg_namelen)
+        (self.buffer, unsafe { SockAddr::new(self.addr, self.msg.msg_namelen) })
     }
 }
 
-/// Send data to specified address.
-pub struct SendToImpl<'arena, T: AsIoSlices<'arena>> {
+/// Send a single piece of data from scattered buffers to the specified address.
+pub struct SendMsgImpl<'arena, T: AsIoSlices<'arena>> {
     pub(crate) fd: FdOrFixed,
     pub(crate) buffer: T,
     pub(crate) addr: SockAddr,
@@ -251,8 +355,8 @@ pub struct SendToImpl<'arena, T: AsIoSlices<'arena>> {
     _lifetime: PhantomData<&'arena ()>,
 }
 
-impl<'arena, T: AsIoSlices<'arena>> SendToImpl<'arena, T> {
-    /// Create [`SendTo`] or [`SendToVectored`].
+impl<'arena, T: AsIoSlices<'arena>> SendMsgImpl<'arena, T> {
+    /// Create [`SendToVectored`].
     pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T, addr: SockAddr) -> Self {
         Self {
             fd: fd.into(),
@@ -283,7 +387,7 @@ impl<'arena, T: AsIoSlices<'arena>> SendToImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendToImpl<'arena, T> {
+impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendMsgImpl<'arena, T> {
     type Inner = T;
 
     fn into_inner(self) -> Self::Inner {

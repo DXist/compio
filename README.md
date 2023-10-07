@@ -25,6 +25,9 @@ The project has different goals:
     * external runtime could submit an external queue of not yet queued operations as a single batch
     * timers are exposed as `Timeout` operation and use suspend-aware CLOCK_BOOTTIME clock source when it's available
     * file descriptors could be registered to remove refcounting overhead in `io_uring`
+    * Separate implementations of nonvectored and vectored Recv/Send and RecvFrom/SendTo - to exclude msghdr related overhead
+    * Use send/recv syscalls/opcodes over read/write to remove the associated overhead
+    * Add Read/Write operations for nonseekable files
 
 * Async runtime is an example runtime to test implementation of drivers
 

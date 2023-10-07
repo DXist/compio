@@ -34,7 +34,7 @@ use crate::driver::iocp::TIMER_PENDING;
 #[cfg(feature = "time")]
 pub use crate::driver::time::Timeout;
 use crate::{
-    buf::{AsIoSlices, AsIoSlicesMut, IntoInner, IoBuf, IoBufMut},
+    buf::{AsIoSlices, AsIoSlicesMut, IntoInner, IoBuf, IoBufMut, BufWrapper, BufWrapperMut},
     driver::{iocp::Overlapped, Fd, IntoRawFd, OpCode, RawFd},
     syscall,
 };
@@ -103,6 +103,56 @@ unsafe fn get_wsa_fn<F>(handle: Fd, fguid: GUID) -> io::Result<Option<F>> {
     Ok(fptr)
 }
 
+/// Read a nonseekable file into specified buffer.
+pub struct Read<'arena, T: IoBufMut<'arena>> {
+    pub(crate) fd: Fd,
+    pub(crate) buffer: T,
+    pub(super) overlapped: Overlapped,
+    _lifetime: PhantomData<&'arena ()>,
+}
+
+impl<'arena, T: IoBufMut<'arena>> Read<'arena, T> {
+    /// Create [`Read`].
+    pub fn new(fd: Fd, buffer: T) -> Self {
+        Self {
+            fd,
+            buffer,
+            overlapped: Overlapped::new(usize::MAX),
+            _lifetime: PhantomData,
+        }
+    }
+}
+
+impl<'arena, T: IoBufMut<'arena>> IntoInner for Read<'arena, T> {
+    type Inner = T;
+
+    fn into_inner(self) -> Self::Inner {
+        self.buffer
+    }
+}
+
+impl<'arena, T: IoBufMut<'arena>> OpCode for Read<'arena, T> {
+    unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
+        self.overlapped.user_data = user_data;
+
+        let fd = self.fd.as_raw_fd() as _;
+        // SAFETY: buffer is Unpin
+        let slice = self.buffer.as_uninit_slice();
+        let res = ReadFile(
+            fd,
+            slice.as_mut_ptr() as _,
+            slice.len() as _,
+            null_mut(),
+            self.overlapped() as *mut _,
+        );
+        win32_pending_result(res)
+    }
+
+    fn overlapped(&mut self) -> &mut OVERLAPPED {
+        &mut self.overlapped.base
+    }
+}
+
 /// Read a file at specified position into specified buffer.
 pub struct ReadAt<'arena, T: IoBufMut<'arena>> {
     pub(crate) fd: Fd,
@@ -148,6 +198,54 @@ impl<'arena, T: IoBufMut<'arena>> OpCode for ReadAt<'arena, T> {
         let res = ReadFile(
             fd,
             slice.as_mut_ptr() as _,
+            slice.len() as _,
+            null_mut(),
+            self.overlapped() as *mut _,
+        );
+        win32_pending_result(res)
+    }
+
+    fn overlapped(&mut self) -> &mut OVERLAPPED {
+        &mut self.overlapped.base
+    }
+}
+
+/// Write a nonseekable file from specified buffer.
+pub struct Write<'arena, T: IoBuf<'arena>> {
+    pub(crate) fd: Fd,
+    pub(crate) buffer: T,
+    pub(super) overlapped: Overlapped,
+    _lifetime: PhantomData<&'arena ()>,
+}
+
+impl<'arena, T: IoBuf<'arena>> Write<'arena, T> {
+    /// Create [`Write`].
+    pub fn new(fd: Fd, buffer: T) -> Self {
+        Self {
+            fd,
+            buffer,
+            overlapped: Overlapped::new(usize::MAX),
+            _lifetime: PhantomData,
+        }
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> IntoInner for Write<'arena, T> {
+    type Inner = T;
+
+    fn into_inner(self) -> Self::Inner {
+        self.buffer
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> OpCode for Write<'arena, T> {
+    unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
+        self.overlapped.user_data = user_data;
+        // SAFETY: buffer is Unpin
+        let slice = self.buffer.as_slice();
+        let res = WriteFile(
+            self.fd.as_raw_fd() as _,
+            slice.as_ptr() as _,
             slice.len() as _,
             null_mut(),
             self.overlapped() as *mut _,
@@ -406,16 +504,49 @@ impl OpCode for Accept {
     }
 }
 
-/// Receive data from remote.
-pub struct RecvImpl<'arena, T: AsIoSlicesMut<'arena>> {
+/// Receive a single piece of data in a single buffer from remote.
+pub struct Recv<'arena, T: IoBufMut<'arena>> {
+    inner: RecvVectoredImpl<'arena, BufWrapperMut<'arena, T>>
+}
+
+impl<'arena, T: IoBufMut<'arena>> Recv<'arena, T> {
+    /// Create [`Recv`]
+    pub fn new(fd: Fd, buffer: T) -> Self {
+        // SAFETY: buffer is Unpin, IoSliceMut is Unpin as well
+        Self {
+            inner: RecvVectoredImpl::new(fd, BufWrapperMut::from(buffer))
+        }
+    }
+}
+
+impl<'arena, T: IoBufMut<'arena>> IntoInner for Recv<'arena, T> {
+    type Inner = T;
+
+    fn into_inner(self) -> Self::Inner {
+        self.inner.into_inner().into_inner()
+    }
+}
+
+impl<'arena, T: IoBufMut<'arena>> OpCode for Recv<'arena, T> {
+    unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
+        self.inner.operate(user_data)
+    }
+
+    fn overlapped(&mut self) -> &mut OVERLAPPED {
+        self.inner.overlapped()
+    }
+}
+
+/// Receive a single piece of data into scattered buffers from remote.
+pub struct RecvVectoredImpl<'arena, T: AsIoSlicesMut<'arena>> {
     pub(crate) fd: Fd,
     pub(crate) buffer: T,
     pub(super) overlapped: Overlapped,
     _lifetime: PhantomData<&'arena ()>,
 }
 
-impl<'arena, T: AsIoSlicesMut<'arena>> RecvImpl<'arena, T> {
-    /// Create [`Recv`] or [`RecvVectored`].
+impl<'arena, T: AsIoSlicesMut<'arena>> RecvVectoredImpl<'arena, T> {
+    /// Create [`RecvVectored`].
     pub fn new(fd: Fd, buffer: T) -> Self {
         // SAFETY: buffer is Unpin, IoSliceMut is Unpin as well
         Self {
@@ -427,7 +558,7 @@ impl<'arena, T: AsIoSlicesMut<'arena>> RecvImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvImpl<'arena, T> {
+impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvVectoredImpl<'arena, T> {
     type Inner = T;
 
     fn into_inner(self) -> Self::Inner {
@@ -435,7 +566,7 @@ impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvImpl<'arena, T> {
+impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvVectoredImpl<'arena, T> {
     unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
         self.overlapped.user_data = user_data;
         // SAFETY: IoSliceMut is Unpin
@@ -460,15 +591,48 @@ impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvImpl<'arena, T> {
     }
 }
 
-/// Send data to remote.
-pub struct SendImpl<'arena, T: AsIoSlices<'arena>> {
+/// Send a single piece of data from a single buffer to remote.
+pub struct Send<'arena, T: IoBuf<'arena>> {
+    inner: SendVectoredImpl<'arena, BufWrapper<'arena, T>>
+}
+
+impl<'arena, T: IoBuf<'arena>> Send<'arena, T> {
+    /// Create [`Send`]
+    pub fn new(fd: Fd, buffer: T) -> Self {
+        // SAFETY: buffer is Unpin, IoSliceMut is Unpin as well
+        Self {
+            inner: SendVectoredImpl::new(fd, BufWrapper::from(buffer))
+        }
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> IntoInner for Send<'arena, T> {
+    type Inner = T;
+
+    fn into_inner(self) -> Self::Inner {
+        self.inner.into_inner().into_inner()
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> OpCode for Send<'arena, T> {
+    unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
+        self.inner.operate(user_data)
+    }
+
+    fn overlapped(&mut self) -> &mut OVERLAPPED {
+        self.inner.overlapped()
+    }
+}
+
+/// Send a single piece of data to remote using scattered buffers.
+pub struct SendVectoredImpl<'arena, T: AsIoSlices<'arena>> {
     pub(crate) fd: Fd,
     pub(crate) buffer: T,
     pub(super) overlapped: Overlapped,
     _lifetime: PhantomData<&'arena ()>,
 }
 
-impl<'arena, T: AsIoSlices<'arena>> SendImpl<'arena, T> {
+impl<'arena, T: AsIoSlices<'arena>> SendVectoredImpl<'arena, T> {
     /// Create [`Send`] or [`SendVectored`].
     pub fn new(fd: Fd, buffer: T) -> Self {
         Self {
@@ -480,7 +644,7 @@ impl<'arena, T: AsIoSlices<'arena>> SendImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendImpl<'arena, T> {
+impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendVectoredImpl<'arena, T> {
     type Inner = T;
 
     fn into_inner(self) -> Self::Inner {
@@ -488,7 +652,7 @@ impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlices<'arena>> OpCode for SendImpl<'arena, T> {
+impl<'arena, T: AsIoSlices<'arena>> OpCode for SendVectoredImpl<'arena, T> {
     unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
         self.overlapped.user_data = user_data;
         // SAFETY: buffer is Unpin, IoSlice is Unpin as well
@@ -511,7 +675,41 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendImpl<'arena, T> {
     }
 }
 
-/// Receive data and source address.
+/// Receive a single piece of data and source address using a single buffer.
+pub struct RecvFrom<'arena, T: IoBufMut<'arena>> {
+    inner: RecvMsgImpl<'arena, BufWrapperMut<'arena, T>>
+}
+
+impl<'arena, T: IoBufMut<'arena>> RecvFrom<'arena, T> {
+    /// Create [`RecvFrom`]
+    pub fn new(fd: Fd, buffer: T) -> Self {
+        // SAFETY: buffer is Unpin, IoSliceMut is Unpin as well
+        Self {
+            inner: RecvMsgImpl::new(fd, BufWrapperMut::from(buffer))
+        }
+    }
+}
+
+impl<'arena, T: IoBufMut<'arena>> IntoInner for RecvFrom<'arena, T> {
+    type Inner = (T, SockAddr);
+
+    fn into_inner(self) -> Self::Inner {
+        let (bufwrapper, sockaddr) = self.inner.into_inner();
+        (bufwrapper.into_inner(), sockaddr)
+    }
+}
+
+impl<'arena, T: IoBufMut<'arena>> OpCode for RecvFrom<'arena, T> {
+    unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
+        self.inner.operate(user_data)
+    }
+
+    fn overlapped(&mut self) -> &mut OVERLAPPED {
+        self.inner.overlapped()
+    }
+}
+
+/// Receive a single piece of data and source address using scattered buffers.
 pub struct RecvMsgImpl<'arena, T: AsIoSlicesMut<'arena>> {
     pub(crate) fd: Fd,
     pub(crate) buffer: T,
@@ -522,7 +720,7 @@ pub struct RecvMsgImpl<'arena, T: AsIoSlicesMut<'arena>> {
 }
 
 impl<'arena, T: AsIoSlicesMut<'arena>> RecvMsgImpl<'arena, T> {
-    /// Create [`RecvFrom`] or [`RecvFromVectored`].
+    /// Create [`RecvFromVectored`].
     pub fn new(fd: Fd, buffer: T) -> Self {
         Self {
             fd,
@@ -536,10 +734,10 @@ impl<'arena, T: AsIoSlicesMut<'arena>> RecvMsgImpl<'arena, T> {
 }
 
 impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvMsgImpl<'arena, T> {
-    type Inner = (T, SOCKADDR_STORAGE, socklen_t);
+    type Inner = (T, SockAddr);
 
     fn into_inner(self) -> Self::Inner {
-        (self.buffer, self.addr, self.addr_len)
+        (self.buffer, unsafe { SockAddr::new(self.addr, self.addr_len) })
     }
 }
 
@@ -570,8 +768,41 @@ impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvMsgImpl<'arena, T> {
     }
 }
 
-/// Send data to specified address.
-pub struct SendToImpl<'arena, T: AsIoSlices<'arena>> {
+/// Send a single piece of data from a single buffer to the specified address.
+pub struct SendTo<'arena, T: IoBuf<'arena>> {
+    inner: SendMsgImpl<'arena, BufWrapper<'arena, T>>
+}
+
+impl<'arena, T: IoBuf<'arena>> SendTo<'arena, T> {
+    /// Create [`Send`]
+    pub fn new(fd: Fd, buffer: T, addr: SockAddr) -> Self {
+        // SAFETY: buffer is Unpin, IoSliceMut is Unpin as well
+        Self {
+            inner: SendMsgImpl::new(fd, BufWrapper::from(buffer), addr)
+        }
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> IntoInner for SendTo<'arena, T> {
+    type Inner = T;
+
+    fn into_inner(self) -> Self::Inner {
+        self.inner.into_inner().into_inner()
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> OpCode for SendTo<'arena, T> {
+    unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
+        self.inner.operate(user_data)
+    }
+
+    fn overlapped(&mut self) -> &mut OVERLAPPED {
+        self.inner.overlapped()
+    }
+}
+
+/// Send a single piece of data from scattered buffers to the specified address.
+pub struct SendMsgImpl<'arena, T: AsIoSlices<'arena>> {
     pub(crate) fd: Fd,
     pub(crate) buffer: T,
     pub(crate) addr: SockAddr,
@@ -579,8 +810,8 @@ pub struct SendToImpl<'arena, T: AsIoSlices<'arena>> {
     _lifetime: PhantomData<&'arena ()>,
 }
 
-impl<'arena, T: AsIoSlices<'arena>> SendToImpl<'arena, T> {
-    /// Create [`SendTo`] or [`SendToVectored`].
+impl<'arena, T: AsIoSlices<'arena>> SendMsgImpl<'arena, T> {
+    /// Create [`SendToVectored`].
     pub fn new(fd: Fd, buffer: T, addr: SockAddr) -> Self {
         Self {
             fd,
@@ -592,7 +823,7 @@ impl<'arena, T: AsIoSlices<'arena>> SendToImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendToImpl<'arena, T> {
+impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendMsgImpl<'arena, T> {
     type Inner = T;
 
     fn into_inner(self) -> Self::Inner {
@@ -600,7 +831,7 @@ impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendToImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlices<'arena>> OpCode for SendToImpl<'arena, T> {
+impl<'arena, T: AsIoSlices<'arena>> OpCode for SendMsgImpl<'arena, T> {
     unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
         self.overlapped.user_data = user_data;
         // SAFETY: buffer is Unpin, IoSliceMut is Unpin as well

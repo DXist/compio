@@ -10,11 +10,11 @@ pub use crate::driver::op::ConnectNamedPipe;
 #[cfg(feature = "time")]
 pub use crate::driver::op::Timeout;
 pub use crate::driver::op::{
-    Accept, Connect, ReadAt, RecvMsgImpl, RecvImpl, SendImpl, SendToImpl, Sync, WriteAt,
+    Accept, Connect, Read, ReadAt, Recv, RecvFrom, RecvMsgImpl, RecvVectoredImpl, Send, SendTo, SendVectoredImpl, SendMsgImpl, Sync,
+    Write, WriteAt,
 };
 use crate::{
     buf::{AsIoSlicesMut, BufWrapperMut, IoBufMut, VectoredBufWrapper},
-    driver::{sockaddr_storage, socklen_t},
     BufResult,
 };
 
@@ -82,36 +82,22 @@ pub(crate) trait RecvResultExt {
 }
 
 impl<'arena, T: 'arena> RecvResultExt
-    for BufResult<'arena, usize, (T, sockaddr_storage, socklen_t)>
+    for BufResult<'arena, usize, (T, SockAddr)>
 {
     type RecvFromResult = BufResult<'arena, (usize, SockAddr), T>;
 
     fn map_addr(self) -> Self::RecvFromResult {
-        let (res, (buffer, addr_buffer, addr_size)) = self;
-        let res = res.map(|res| {
-            let addr = unsafe { SockAddr::new(addr_buffer, addr_size) };
-            (res, addr)
-        });
-        (res, buffer)
+        let (res, (buffer, addr)) = self;
+        (res.map(|received| (received, addr)), buffer)
     }
 }
 
-/// Receive data with one buffer.
-pub type Recv<'arena, T> = RecvImpl<'arena, T>;
-/// Receive data with vectored buffer.
-pub type RecvVectored<'arena, T> = RecvImpl<'arena, VectoredBufWrapper<'arena, T>>;
+/// Receive a single piece of data with vectored buffer.
+pub type RecvVectored<'arena, T> = RecvVectoredImpl<'arena, VectoredBufWrapper<'arena, T>>;
+/// Send a single piece of data with vectored buffer.
+pub type SendVectored<'arena, T> = SendVectoredImpl<'arena, VectoredBufWrapper<'arena, T>>;
 
-/// Send data with one buffer.
-pub type Send<'arena, T> = SendImpl<'arena, T>;
-/// Send data with vectored buffer.
-pub type SendVectored<'arena, T> = SendImpl<'arena, VectoredBufWrapper<'arena, T>>;
-
-/// Receive data and address with one buffer.
-pub type RecvFrom<'arena, T> = RecvMsgImpl<'arena, T>;
-/// Receive data and address with vectored buffer.
+/// Receive a single piece of data and address with vectored buffer.
 pub type RecvFromVectored<'arena, T> = RecvMsgImpl<'arena, VectoredBufWrapper<'arena, T>>;
-
-/// Send data to address with one buffer.
-pub type SendTo<'arena, T> = SendToImpl<'arena, T>;
-/// Send data to address with vectored buffer.
-pub type SendToVectored<'arena, T> = SendToImpl<'arena, VectoredBufWrapper<'arena, T>>;
+/// Send a single piece of data to address with vectored buffer.
+pub type SendToVectored<'arena, T> = SendMsgImpl<'arena, VectoredBufWrapper<'arena, T>>;

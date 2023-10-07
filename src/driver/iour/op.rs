@@ -9,10 +9,12 @@ use io_uring::{
     types::{self, FsyncFlags},
 };
 use libc::sockaddr_storage;
+use socket2::SockAddr;
 
 pub use crate::driver::unix::op::*;
+use crate::driver::unix::IntoFdOrFixed;
 use crate::{
-    buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut},
+    buf::{AsIoSlices, AsIoSlicesMut, IoBuf, IoBufMut, IntoInner, BufWrapper, BufWrapperMut},
     driver::{Fd, FdOrFixed, IntoRawFd, OpCode},
 };
 
@@ -26,6 +28,14 @@ macro_rules! apply_to_fd_or_fixed {
 
 }
 
+impl<'arena, T: IoBufMut<'arena>> OpCode for Read<'arena, T> {
+    fn create_entry(&mut self) -> Entry {
+        // SAFETY: slice into buffer is Unpin
+        let slice = self.buffer.as_uninit_slice();
+        apply_to_fd_or_fixed!(opcode::Read::new; self.fd, slice.as_mut_ptr() as _, slice.len() as _).build()
+    }
+}
+
 impl<'arena, T: IoBufMut<'arena>> OpCode for ReadAt<'arena, T> {
     fn create_entry(&mut self) -> Entry {
         // SAFETY: slice into buffer is Unpin
@@ -33,6 +43,14 @@ impl<'arena, T: IoBufMut<'arena>> OpCode for ReadAt<'arena, T> {
         apply_to_fd_or_fixed!(opcode::Read::new; self.fd, slice.as_mut_ptr() as _, slice.len() as _)
             .offset(self.offset as _)
             .build()
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> OpCode for Write<'arena, T> {
+    fn create_entry(&mut self) -> Entry {
+        // SAFETY: slice into buffer is Unpin
+        let slice = self.buffer.as_slice();
+        apply_to_fd_or_fixed!(opcode::Write::new; self.fd, slice.as_ptr(), slice.len() as _).build()
     }
 }
 
@@ -74,7 +92,26 @@ impl OpCode for Connect {
     }
 }
 
-impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvImpl<'arena, T> {
+impl<'arena, T: IoBufMut<'arena>> OpCode for Recv<'arena, T> {
+    fn create_entry(&mut self) -> Entry {
+        // SAFETY: IoSliceMut is Unpin
+        let slice = self.buffer.as_uninit_slice();
+        // From https://github.com/fredrikwidlund/libreactor/issues/5 :
+        // "In my tests using the Techempower JSON benchmark running on an AWS
+        // EC2 instance, I was able to achieve a performance improvement of a
+        // little over 10% by using the send/recv functions (with the flags
+        // param set to 0) in place of write/read."
+
+        // "From the attached flamegraphs (see below) of the syscalls made during
+        // the test, you can see that sys_read/sys_write call several intermediate
+        // functions before finally calling inet_recvmsg and sock_sendmsg. So even
+        // though the behavior is functionally identical, there is a performance
+        // gain to be had that shows up tests like this."
+        apply_to_fd_or_fixed!(opcode::Recv::new; self.fd, slice.as_mut_ptr() as _, slice.len() as _).build()
+    }
+}
+
+impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvVectoredImpl<'arena, T> {
     fn create_entry(&mut self) -> Entry {
         // SAFETY: IoSliceMut is Unpin
         let slices = unsafe { self.buffer.as_io_slices_mut() };
@@ -82,12 +119,52 @@ impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlices<'arena>> OpCode for SendImpl<'arena, T> {
+impl<'arena, T: IoBuf<'arena>> OpCode for Send<'arena, T> {
+    fn create_entry(&mut self) -> Entry {
+        // SAFETY: IoSlice is Unpin
+        let slice = self.buffer.as_slice();
+        apply_to_fd_or_fixed!(opcode::Send::new; self.fd, slice.as_ptr() as _, slice.len() as _).build()
+    }
+}
+
+impl<'arena, T: AsIoSlices<'arena>> OpCode for SendVectoredImpl<'arena, T> {
     fn create_entry(&mut self) -> Entry {
         // SAFETY: IoSlice is Unpin
         let slices = unsafe { self.buffer.as_io_slices() };
         apply_to_fd_or_fixed!(opcode::Writev::new; self.fd, slices.as_ptr() as _, slices.len() as _)
             .build()
+    }
+}
+
+// SendTo/RecvFrom opcodes are in progress - https://github.com/axboe/liburing/issues/397
+// We fallback to reuse SendMsg/RcvMsg
+
+/// Receive a single piece of data and source address using a single buffer.
+pub struct RecvFrom<'arena, T: IoBufMut<'arena>> {
+    inner: RecvMsgImpl<'arena, BufWrapperMut<'arena, T>>
+}
+
+impl<'arena, T: IoBufMut<'arena>> RecvFrom<'arena, T> {
+    /// Create [`RecvFrom`].
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T) -> Self {
+        Self {
+            inner: RecvMsgImpl::new(fd, BufWrapperMut::from(buffer))
+        }
+    }
+}
+
+impl<'arena, T: IoBufMut<'arena>> IntoInner for RecvFrom<'arena, T> {
+    type Inner = (T, SockAddr);
+
+    fn into_inner(self) -> Self::Inner {
+        let (bufwrapper, sockaddr) = self.inner.into_inner();
+        (bufwrapper.into_inner(), sockaddr)
+    }
+}
+
+impl<'arena, T: IoBufMut<'arena>> OpCode for RecvFrom<'arena, T> {
+    fn create_entry(&mut self) -> Entry {
+        self.inner.create_entry()
     }
 }
 
@@ -100,7 +177,35 @@ impl<'arena, T: AsIoSlicesMut<'arena>> OpCode for RecvMsgImpl<'arena, T> {
     }
 }
 
-impl<'arena, T: AsIoSlices<'arena>> OpCode for SendToImpl<'arena, T> {
+/// Send a single piece of data from a single buffer to the specified address.
+pub struct SendTo<'arena, T: IoBuf<'arena>> {
+    inner: SendMsgImpl<'arena, BufWrapper<'arena, T>>
+}
+
+impl<'arena, T: IoBuf<'arena>> SendTo<'arena, T> {
+    /// Create [`SendTo`].
+    pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>, buffer: T, addr: SockAddr) -> Self {
+        Self {
+            inner: SendMsgImpl::new(fd, BufWrapper::from(buffer), addr)
+        }
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> IntoInner for SendTo<'arena, T> {
+    type Inner = T;
+
+    fn into_inner(self) -> Self::Inner {
+        self.inner.into_inner().into_inner()
+    }
+}
+
+impl<'arena, T: IoBuf<'arena>> OpCode for SendTo<'arena, T> {
+    fn create_entry(&mut self) -> Entry {
+        self.inner.create_entry()
+    }
+}
+
+impl<'arena, T: AsIoSlices<'arena>> OpCode for SendMsgImpl<'arena, T> {
     #[allow(clippy::no_effect)]
     fn create_entry(&mut self) -> Entry {
         let fd = self.fd;

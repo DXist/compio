@@ -12,7 +12,6 @@ use io_uring::{
     types::{SubmitArgs, Timespec},
     IoUring, Probe,
 };
-pub(crate) use libc::{sockaddr_storage, socklen_t};
 
 use crate::{
     driver::{unix::IntoFdOrFixed, CompleteIo, Entry, OpObject, Operation},
