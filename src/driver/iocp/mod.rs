@@ -160,6 +160,8 @@ const DEFAULT_CAPACITY: usize = 1024;
 pub struct Driver<'arena> {
     port: OwnedHandle,
     squeue: Vec<OpObject<'arena>>,
+    // to protect undrained part of squeue from new pushes from processing of completed entries
+    squeue_drained_till: usize,
     iocp_entries: Vec<OVERLAPPED_ENTRY>,
     #[cfg(feature = "time")]
     timers: TimerWheel,
@@ -178,10 +180,12 @@ impl<'arena> Driver<'arena> {
     pub fn with(entries: u32, _files_to_register: u32) -> io::Result<Self> {
         let port = syscall!(BOOL, CreateIoCompletionPort(INVALID_HANDLE_VALUE, 0, 0, 0))?;
         let port = unsafe { OwnedHandle::from_raw_handle(port as _) };
+        let entries = entries as usize;
         Ok(Self {
             port,
-            squeue: Vec::with_capacity(entries as usize),
-            iocp_entries: Vec::with_capacity(entries as usize),
+            squeue: Vec::with_capacity(entries),
+            squeue_drained_till: entries,
+            iocp_entries: Vec::with_capacity(entries),
             #[cfg(feature = "time")]
             timers: TimerWheel::with_capacity(16),
             _lifetime: PhantomData,
@@ -351,7 +355,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
         timeout: Option<Duration>,
         entries: &mut impl Extend<Entry>,
     ) -> io::Result<()> {
-        for mut operation in self.squeue.drain(..) {
+        let oneshot_completed_iter = self.squeue.drain(..).enumerate().filter_map(|(idx, mut operation)| {
             let user_data = operation.user_data();
             // we require Unpin buffers - so no need to pin
             let op = operation.opcode();
@@ -360,13 +364,18 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
                 #[cfg(feature = "time")]
                 Poll::Ready(Ok(TIMER_PENDING)) => {
                     self.timers.insert(user_data, op.timer_delay());
+                    None
                 }
                 Poll::Ready(result) => {
-                    entries.extend(Some(Entry::new(user_data, result)));
+                    self.squeue_drained_till = idx + 1;
+                    Some(Entry::new(user_data, result))
                 }
-                _ => {}
+                _ => None
             }
-        }
+        });
+
+        entries.extend(oneshot_completed_iter);
+        self.squeue_drained_till = self.squeue.capacity();
 
         #[cfg(feature = "time")]
         let timeout = self.timers.till_next_timer_or_timeout(timeout);

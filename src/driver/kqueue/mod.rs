@@ -81,6 +81,8 @@ pub struct Driver<'arena> {
     kqueue: OwnedFd,
     // submission queue
     squeue: Vec<OpObject<'arena>>,
+    // to protect undrained part of squeue from new pushes from processing of completed entries
+    squeue_drained_till: usize,
     // pending io queue
     io_pending: VecDeque<OpObject<'arena>>,
     // kevent changelist
@@ -115,6 +117,7 @@ impl<'arena> Driver<'arena> {
         Ok(Self {
             kqueue: kqueue()?,
             squeue: Vec::with_capacity(entries),
+            squeue_drained_till: entries,
             io_pending: VecDeque::with_capacity(entries),
             events_to_change: Vec::with_capacity(entries),
             ready_events: Vec::with_capacity(entries),
@@ -128,7 +131,7 @@ impl<'arena> Driver<'arena> {
 
     // operate pushed operations
     fn operate_squeue(&mut self, entries: &mut impl Extend<Entry>) {
-        let oneshot_completed_iter = self.squeue.drain(..).filter_map(|mut op| {
+        let oneshot_completed_iter = self.squeue.drain(..).enumerate().filter_map(|(idx, mut op)| {
             let user_data = op.user_data();
             let opcode = op.opcode();
             // io buffers are Unpin so no need to pin
@@ -144,12 +147,16 @@ impl<'arena> Driver<'arena> {
                         self.timers.insert(user_data, opcode.timer_delay());
                         None
                     }
-                    res => Some(Entry::new(user_data, res)),
+                    res => {
+                        self.squeue_drained_till = idx + 1;
+                        Some(Entry::new(user_data, res))
+                    }
                 },
             }
         });
 
         entries.extend(oneshot_completed_iter);
+        self.squeue_drained_till = self.squeue.capacity();
     }
 
     fn operate_completed_and_requeue(
@@ -337,7 +344,7 @@ impl<'arena> CompleteIo<'arena> for Driver<'arena> {
 
     #[inline]
     fn capacity_left(&self) -> usize {
-        self.squeue.capacity() - self.squeue.len()
+        self.squeue_drained_till.saturating_sub(self.squeue.len())
     }
 
     unsafe fn submit(
