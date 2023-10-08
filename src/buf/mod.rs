@@ -16,7 +16,7 @@ pub(crate) use with_buf::*;
 mod buf_wrapper;
 pub use buf_wrapper::{BufWrapper, BufWrapperMut, VectoredBufWrapper};
 
-/// Trait to get the inner buffer of an operation or a result.
+/// Trait to get the inner buffer and other results of an operation.
 pub trait IntoInner {
     /// The inner type.
     type Inner;

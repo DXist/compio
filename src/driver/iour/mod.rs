@@ -95,6 +95,8 @@ impl IntoFdOrFixed for FixedFd {
 
 /// Invalid file descriptor value could be used as an initial value of uninitialized file descriptor
 pub const INVALID_FD: Fd = Fd::from_raw(-1);
+/// Invalid fixed file descriptor value could be used as an initial value of uninitialized fixed file descriptor
+pub const INVALID_FIXED_FD: FixedFd = FixedFd::from_offset(u32::MAX);
 
 /// Abstraction of io-uring operations.
 pub trait OpCode {
