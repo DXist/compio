@@ -56,7 +56,8 @@ pub type FdOrFixed = Fd;
 
 /// Invalid file descriptor value could be used as an initial value of uninitialized file descriptor
 pub const INVALID_FD: Fd = Fd::from_raw(-1);
-/// Invalid fixed file descriptor value could be used as an initial value of uninitialized fixed file descriptor
+/// Invalid fixed file descriptor value could be used as an initial value of uninitialized fixed
+/// file descriptor
 pub const INVALID_FIXED_FD: FixedFd = INVALID_FD;
 
 /// Abstraction of operations.

@@ -1,11 +1,11 @@
-use std::marker::PhantomData;
+use std::{io, marker::PhantomData};
 
 use libc::{sockaddr_storage, socklen_t};
-use socket2::SockAddr;
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, IntoInner, IoBuf, IoBufMut},
-    driver::{unix::IntoFdOrFixed, FdOrFixed},
+    driver::{unix::IntoFdOrFixed, FdOrFixed, FromRawFd, RawFd},
 };
 
 /// Read a nonseekable file into specified buffer.
@@ -143,6 +143,13 @@ impl Connect {
         };
         this
     }
+
+    /// Post operation socket handling.
+    ///
+    /// For compatibility with IOCP.
+    pub fn on_connect(self, result: io::Result<usize>) -> io::Result<()> {
+        result.map(|_| ())
+    }
 }
 
 /// Accept a connection.
@@ -153,6 +160,18 @@ pub struct Accept {
 }
 
 impl Accept {
+    /// Try to create [`Accept`].
+    ///
+    /// Common fallible interface between IOCP/unix
+    pub fn try_new(
+        fd: impl IntoFdOrFixed<Target = FdOrFixed>,
+        _domain: Domain,
+        _ty: Type,
+        _protocol: Option<Protocol>,
+    ) -> io::Result<Self> {
+        Ok(Self::new(fd))
+    }
+
     /// Create [`Accept`].
     pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>) -> Self {
         Self {
@@ -160,6 +179,18 @@ impl Accept {
             buffer: unsafe { std::mem::zeroed() },
             addr_len: std::mem::size_of::<sockaddr_storage>() as _,
         }
+    }
+
+    /// Post operation socket handling.
+    ///
+    /// Set nonblocking for kqueue.
+    /// Get remote address.
+    pub fn on_accept(self, result: io::Result<usize>) -> io::Result<(Socket, SockAddr)> {
+        let accept_sock = unsafe { Socket::from_raw_fd(result? as RawFd) };
+        #[cfg(all(unix, not(target_os = "linux")))]
+        accept_sock.set_nonblocking(true)?;
+        let addr = self.into_addr();
+        Ok((accept_sock, addr))
     }
 
     /// Get the remote address from the inner buffer.

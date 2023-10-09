@@ -9,7 +9,7 @@ use std::{
 
 #[cfg(not(feature = "once_cell_try"))]
 use once_cell::sync::OnceCell as OnceLock;
-use socket2::SockAddr;
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use windows_sys::{
     core::GUID,
     Win32::{
@@ -35,7 +35,7 @@ use crate::driver::iocp::TIMER_PENDING;
 pub use crate::driver::time::Timeout;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, BufWrapper, BufWrapperMut, IntoInner, IoBuf, IoBufMut},
-    driver::{iocp::Overlapped, Fd, IntoRawFd, OpCode, RawFd},
+    driver::{iocp::Overlapped, AsRawFd, Fd, FromRawFd, IntoRawFd, OpCode, RawFd},
     syscall,
 };
 
@@ -323,7 +323,25 @@ pub struct Connect {
 }
 
 impl Connect {
-    /// Update connect context.
+    /// Create [`Connect`]. `fd` should be bound.
+    pub fn new(fd: Fd, addr: SockAddr) -> Self {
+        Self {
+            fd,
+            addr,
+            overlapped: Overlapped::new(usize::MAX),
+        }
+    }
+
+    /// Post operation socket handling.
+    ///
+    /// Set SO_UPDATE_CONNECT_CONTEXT
+    pub fn on_connect(self, result: io::Result<usize>) -> io::Result<()> {
+        let _ = result?;
+        self.update_context()?;
+        Ok(())
+    }
+
+    /// Set SO_UPDATE_CONNECT_CONTEXT
     pub fn update_context(&self) -> io::Result<()> {
         syscall!(
             SOCKET,
@@ -336,17 +354,6 @@ impl Connect {
             )
         )?;
         Ok(())
-    }
-}
-
-impl Connect {
-    /// Create [`Connect`]. `fd` should be bound.
-    pub fn new(fd: Fd, addr: SockAddr) -> Self {
-        Self {
-            fd,
-            addr,
-            overlapped: Overlapped::new(usize::MAX),
-        }
     }
 }
 
@@ -422,6 +429,19 @@ pub struct Accept {
 }
 
 impl Accept {
+    /// Try to create [`Accept`].
+    ///
+    /// Common fallible interface between IOCP/unix
+    pub fn try_new(
+        fd: Fd,
+        domain: Domain,
+        ty: Type,
+        protocol: Option<Protocol>,
+    ) -> io::Result<Self> {
+        let accept_sock = Socket::new(domain, ty, protocol)?;
+        Ok(Self::new(fd, accept_sock.as_raw_fd()))
+    }
+
     /// Create [`Accept`]. `accept_fd` should not be bound.
     pub fn new(fd: Fd, accept_fd: RawFd) -> Self {
         Self {
@@ -430,6 +450,18 @@ impl Accept {
             buffer: unsafe { std::mem::zeroed() },
             overlapped: Overlapped::new(usize::MAX),
         }
+    }
+
+    /// Post operation socket handling.
+    ///
+    /// Set SO_UPDATE_ACCEPT_CONTEXT
+    /// Get remote address.
+    pub fn on_accept(self, result: io::Result<usize>) -> io::Result<(Socket, SockAddr)> {
+        let _ = result?;
+        let accept_sock = unsafe { Socket::from_raw_fd(self.accept_fd) };
+        self.update_context()?;
+        let addr = self.into_addr()?;
+        Ok((accept_sock, addr))
     }
 
     /// Update accept context.
