@@ -153,9 +153,11 @@ impl Connect {
 }
 
 /// Accept a connection.
+///
+/// It's possible to reinit the data structure and reuse it for the following accepts.
 pub struct Accept {
     pub(in crate::driver) fd: FdOrFixed,
-    pub(in crate::driver) buffer: sockaddr_storage,
+    pub(in crate::driver) addr: SockAddr,
     pub(in crate::driver) addr_len: socklen_t,
 }
 
@@ -176,26 +178,43 @@ impl Accept {
     pub fn new(fd: impl IntoFdOrFixed<Target = FdOrFixed>) -> Self {
         Self {
             fd: fd.into(),
-            buffer: unsafe { std::mem::zeroed() },
-            addr_len: std::mem::size_of::<sockaddr_storage>() as _,
+            addr: unsafe {
+                SockAddr::new(
+                    std::mem::zeroed(),
+                    std::mem::size_of::<sockaddr_storage>() as socklen_t,
+                )
+            },
+            addr_len: std::mem::size_of::<sockaddr_storage>() as socklen_t,
         }
+    }
+    ///
+    /// Init existing [`Accept`] for new accept operation.
+    pub fn init_with_socket_opts(
+        &mut self,
+        fd: impl IntoFdOrFixed<Target = FdOrFixed>,
+        _domain: Domain,
+        _ty: Type,
+        _protocol: Option<Protocol>,
+    ) {
+        self.fd = fd.into();
     }
 
     /// Post operation socket handling.
     ///
     /// Set nonblocking for kqueue.
     /// Get remote address.
-    pub fn on_accept(self, result: io::Result<usize>) -> io::Result<(Socket, SockAddr)> {
+    pub fn on_accept(&mut self, result: io::Result<usize>) -> io::Result<(Socket, &SockAddr)> {
         let accept_sock = unsafe { Socket::from_raw_fd(result? as RawFd) };
         #[cfg(all(unix, not(target_os = "linux")))]
         accept_sock.set_nonblocking(true)?;
-        let addr = self.into_addr();
+        let addr = self.as_sockaddr();
         Ok((accept_sock, addr))
     }
 
     /// Get the remote address from the inner buffer.
-    pub fn into_addr(self) -> SockAddr {
-        unsafe { SockAddr::new(self.buffer, self.addr_len) }
+    pub fn as_sockaddr(&mut self) -> &SockAddr {
+        unsafe { self.addr.set_length(self.addr_len) };
+        &self.addr
     }
 }
 

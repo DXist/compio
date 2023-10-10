@@ -3,7 +3,8 @@ use std::sync::OnceLock;
 use std::{
     io,
     marker::PhantomData,
-    ptr::{null, null_mut},
+    os::raw::c_void,
+    ptr::{copy, null, null_mut},
     task::Poll,
 };
 
@@ -422,11 +423,13 @@ static ACCEPT_EX: OnceLock<LPFN_ACCEPTEX> = OnceLock::new();
 static GET_ADDRS: OnceLock<LPFN_GETACCEPTEXSOCKADDRS> = OnceLock::new();
 
 /// Accept a connection.
+///
+/// It's possible to reinit the data structure and reuse it for the following accepts.
 pub struct Accept {
     fd: Fd,
     accept_fd: RawFd,
     accept_sock_opts: Option<AcceptSocketOpts>,
-    buffer: SOCKADDR_STORAGE,
+    addr: SockAddr,
     overlapped: Overlapped,
 }
 
@@ -439,7 +442,7 @@ struct AcceptSocketOpts {
 impl Accept {
     const INVALID_SOCKET: RawFd = INVALID_SOCKET as RawFd;
 
-    /// Create [`Accept`] with socket options.
+    /// Create [`Accept`] with listen socket options.
     ///
     /// Accept socket will be created on operation execution.
     pub fn with_socket_opts(fd: Fd, domain: Domain, ty: Type, protocol: Option<Protocol>) -> Self {
@@ -451,9 +454,31 @@ impl Accept {
                 ty,
                 protocol,
             }),
-            buffer: unsafe { std::mem::zeroed() },
+            addr: unsafe {
+                SockAddr::new(
+                    std::mem::zeroed(),
+                    std::mem::size_of::<SOCKADDR_STORAGE>() as socklen_t,
+                )
+            },
             overlapped: Overlapped::new(usize::MAX),
         }
+    }
+
+    /// Init existing [`Accept`] for new accept operation.
+    pub fn init_with_socket_opts(
+        &mut self,
+        fd: Fd,
+        domain: Domain,
+        ty: Type,
+        protocol: Option<Protocol>,
+    ) {
+        self.fd = fd;
+        self.accept_fd = Self::INVALID_SOCKET;
+        self.accept_sock_opts = Some(AcceptSocketOpts {
+            domain,
+            ty,
+            protocol,
+        });
     }
 
     /// Create [`Accept`] with the provided accept socket fd. `accept_fd` should not be bound.
@@ -462,7 +487,12 @@ impl Accept {
             fd,
             accept_fd,
             accept_sock_opts: None,
-            buffer: unsafe { std::mem::zeroed() },
+            addr: unsafe {
+                SockAddr::new(
+                    std::mem::zeroed(),
+                    std::mem::size_of::<SOCKADDR_STORAGE>() as socklen_t,
+                )
+            },
             overlapped: Overlapped::new(usize::MAX),
         }
     }
@@ -471,11 +501,11 @@ impl Accept {
     ///
     /// Set SO_UPDATE_ACCEPT_CONTEXT
     /// Get remote address.
-    pub fn on_accept(self, result: io::Result<usize>) -> io::Result<(Socket, SockAddr)> {
+    pub fn on_accept(&mut self, result: io::Result<usize>) -> io::Result<(Socket, &SockAddr)> {
         let _ = result?;
         let accept_sock = unsafe { Socket::from_raw_fd(self.accept_fd) };
         self.update_context()?;
-        let addr = self.into_addr()?;
+        let addr = self.as_sockaddr()?;
         Ok((accept_sock, addr))
     }
 
@@ -495,7 +525,7 @@ impl Accept {
     }
 
     /// Get the remote address from the inner buffer.
-    pub fn into_addr(self) -> io::Result<SockAddr> {
+    pub fn as_sockaddr(&mut self) -> io::Result<&SockAddr> {
         let get_addrs_fn = GET_ADDRS
             .get_or_try_init(|| unsafe { get_wsa_fn(self.fd, WSAID_GETACCEPTEXSOCKADDRS) })?
             .ok_or_else(|| {
@@ -510,17 +540,24 @@ impl Accept {
         let mut remote_addr_len = 0;
         unsafe {
             get_addrs_fn(
-                &self.buffer as *const _ as *const _,
+                self.addr.as_ptr() as *const c_void,
                 0,
                 0,
-                std::mem::size_of_val(&self.buffer) as _,
+                std::mem::size_of::<SOCKADDR_STORAGE>() as _,
                 &mut local_addr,
                 &mut local_addr_len,
                 &mut remote_addr,
                 &mut remote_addr_len,
             );
         }
-        Ok(unsafe { SockAddr::new(*remote_addr.cast::<SOCKADDR_STORAGE>(), remote_addr_len) })
+        let addr_storage_ptr = self.addr.as_ptr() as *mut _;
+        if remote_addr != addr_storage_ptr {
+            unsafe { copy(remote_addr, addr_storage_ptr, remote_addr_len as usize) };
+        }
+        unsafe {
+            self.addr.set_length(remote_addr_len);
+        };
+        Ok(&self.addr)
     }
 }
 
@@ -541,14 +578,15 @@ impl OpCode for Accept {
             .ok_or_else(|| {
                 io::Error::new(io::ErrorKind::Unsupported, "cannot retrieve AcceptEx")
             })?;
+        let storage_ptr = self.addr.as_ptr();
         let mut received = 0;
         let res = accept_fn(
             self.fd.as_raw_fd() as _,
             self.accept_fd as _,
-            &mut self.buffer as *mut _ as *mut _,
+            storage_ptr as *mut c_void,
             0,
             0,
-            std::mem::size_of_val(&self.buffer) as _,
+            std::mem::size_of::<SOCKADDR_STORAGE>() as _,
             &mut received,
             &mut self.overlapped.base as *mut _,
         );
@@ -979,7 +1017,11 @@ fn get_sockopt_error(fd: RawFd) -> Result<(), i32> {
     if rc != 0 {
         Err(rc)
     } else {
-        if err_code == 0 { Ok(()) } else { Err(err_code) }
+        if err_code == 0 {
+            Ok(())
+        } else {
+            Err(err_code)
+        }
     }
 }
 

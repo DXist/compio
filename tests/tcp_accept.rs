@@ -5,13 +5,16 @@ async fn test_impl(addr: impl ToSockAddrs) {
     let addr = listener.local_addr().unwrap();
     let (tx, rx) = futures_channel::oneshot::channel();
     completeio::task::spawn(async move {
-        let (socket, _) = listener.accept().await.unwrap();
-        assert!(tx.send(socket).is_ok());
+        let (socket, accepted_addr) = listener.accept().await.unwrap();
+
+        assert!(tx.send((socket, accepted_addr)).is_ok());
     })
     .detach();
     let cli = TcpStream::connect(&addr).await.unwrap();
-    let srv = rx.await.unwrap();
-    assert_eq!(cli.local_addr().unwrap(), srv.peer_addr().unwrap());
+    let (srv, accepted_addr) = rx.await.unwrap();
+    let client_addr = cli.local_addr().unwrap();
+    assert_eq!(client_addr, srv.peer_addr().unwrap());
+    assert_eq!(client_addr, accepted_addr);
 }
 
 macro_rules! test_accept {

@@ -114,9 +114,9 @@ impl Socket {
                 self.socket.protocol()?,
             )
         };
-        let (res, op) = RUNTIME.with(|runtime| runtime.submit(op)).await;
+        let (res, mut op) = RUNTIME.with(|runtime| runtime.submit(op)).await;
         let (accept_sock, addr) = op.on_accept(res)?;
-        Ok((Self::from_socket2(accept_sock), addr))
+        Ok((Self::from_socket2(accept_sock), addr.clone()))
     }
 
     #[cfg(feature = "runtime")]

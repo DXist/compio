@@ -140,7 +140,7 @@ impl OpCode for Accept {
         syscall!(
             maybe_block accept(
                 self.fd.as_raw_fd(),
-                &mut self.buffer as *mut _ as *mut _,
+                self.addr.as_ptr() as *mut sockaddr,
                 &mut self.addr_len
             )
         )

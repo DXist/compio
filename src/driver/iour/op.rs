@@ -8,7 +8,7 @@ use io_uring::{
     squeue::Entry,
     types::{self, FsyncFlags},
 };
-use libc::sockaddr_storage;
+use libc::sockaddr;
 use socket2::SockAddr;
 
 pub use crate::driver::unix::op::*;
@@ -79,7 +79,7 @@ impl OpCode for Sync {
 impl OpCode for Accept {
     fn create_entry(&mut self) -> Entry {
         // SAFETY: buffer is Unpin
-        let buf_pointer = &mut self.buffer as *mut sockaddr_storage as *mut libc::sockaddr;
+        let buf_pointer = self.addr.as_ptr() as *mut sockaddr;
         apply_to_fd_or_fixed!(opcode::Accept::new; self.fd, buf_pointer, &mut self.addr_len).build()
     }
 }

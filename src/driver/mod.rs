@@ -151,7 +151,7 @@ pub trait CompleteIo<'arena> {
     /// Caller could use an external queue like VecDeque<OpObject<'a>> to keep
     /// unqueued operations.
     fn try_push<O: OpCode>(&mut self, op: Operation<'arena, O>)
-    -> Result<(), Operation<'arena, O>>;
+        -> Result<(), Operation<'arena, O>>;
 
     /// Try to push operation object into submission queue
     fn try_push_dyn(&mut self, op: OpObject<'arena>) -> Result<(), OpObject<'arena>>;
