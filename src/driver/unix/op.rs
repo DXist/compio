@@ -187,7 +187,7 @@ impl Accept {
             addr_len: std::mem::size_of::<sockaddr_storage>() as socklen_t,
         }
     }
-    ///
+
     /// Init existing [`Accept`] for new accept operation.
     pub fn init_with_socket_opts(
         &mut self,

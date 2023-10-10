@@ -359,6 +359,16 @@ impl Connect {
     }
 }
 
+impl Default for Connect {
+    fn default() -> Self {
+        Self {
+            fd: INVALID_FD,
+            addr: unsafe { std::mem::zeroed },
+            overlapped: Overlapped::new(usize::MAX),
+        }
+    }
+}
+
 impl OpCode for Connect {
     unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
         self.overlapped.user_data = user_data;
@@ -1017,11 +1027,7 @@ fn get_sockopt_error(fd: RawFd) -> Result<(), i32> {
     if rc != 0 {
         Err(rc)
     } else {
-        if err_code == 0 {
-            Ok(())
-        } else {
-            Err(err_code)
-        }
+        if err_code == 0 { Ok(()) } else { Err(err_code) }
     }
 }
 
