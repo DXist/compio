@@ -2,8 +2,6 @@ use std::{io, net::Shutdown};
 
 use socket2::{Domain, Protocol, SockAddr, Socket as Socket2, Type};
 
-#[cfg(all(feature = "runtime", windows))]
-use crate::driver::AsRawFd;
 use crate::impl_raw_fd;
 #[cfg(feature = "runtime")]
 use crate::{
@@ -101,35 +99,24 @@ impl Socket {
         }
     }
 
-    #[cfg(all(feature = "runtime", unix))]
+    #[cfg(feature = "runtime")]
     pub async fn accept(&self) -> io::Result<(Self, SockAddr)> {
-        use std::os::fd::FromRawFd;
-
         let fd = self.attach()?;
+        #[cfg(unix)]
         let op = Accept::new(fd);
+        #[cfg(target_os = "windows")]
+        let op = {
+            let local_addr = self.local_addr()?;
+            Accept::with_socket_opts(
+                fd,
+                local_addr.domain(),
+                self.socket.r#type()?,
+                self.socket.protocol()?,
+            )
+        };
         let (res, op) = RUNTIME.with(|runtime| runtime.submit(op)).await;
-        let accept_sock = unsafe { Socket2::from_raw_fd(res? as _) };
-        accept_sock.set_nonblocking(true)?;
-        let accept_sock = Self::from_socket2(accept_sock);
-        let addr = op.into_addr();
-        Ok((accept_sock, addr))
-    }
-
-    #[cfg(all(feature = "runtime", target_os = "windows"))]
-    pub async fn accept(&self) -> io::Result<(Self, SockAddr)> {
-        let fd = self.attach()?;
-        let local_addr = self.local_addr()?;
-        let accept_sock = Self::new(
-            local_addr.domain(),
-            self.socket.r#type()?,
-            self.socket.protocol()?,
-        )?;
-        let op = Accept::new(fd, accept_sock.as_raw_fd() as _);
-        let (res, op) = RUNTIME.with(|runtime| runtime.submit(op)).await;
-        res?;
-        op.update_context()?;
-        let addr = op.into_addr()?;
-        Ok((accept_sock, addr))
+        let (accept_sock, addr) = op.on_accept(res)?;
+        Ok((Self::from_socket2(accept_sock), addr))
     }
 
     #[cfg(feature = "runtime")]

@@ -19,10 +19,11 @@ use windows_sys::{
         },
         Networking::WinSock::{
             closesocket, getsockopt, setsockopt, socklen_t, WSAIoctl, WSARecv, WSARecvFrom,
-            WSASend, WSASendTo, LPFN_ACCEPTEX, LPFN_CONNECTEX, LPFN_GETACCEPTEXSOCKADDRS,
-            SIO_GET_EXTENSION_FUNCTION_POINTER, SOCKADDR, SOCKADDR_STORAGE, SOL_SOCKET, SO_ERROR,
-            SO_UPDATE_ACCEPT_CONTEXT, SO_UPDATE_CONNECT_CONTEXT, WSAENOTSOCK, WSAID_ACCEPTEX,
-            WSAID_CONNECTEX, WSAID_GETACCEPTEXSOCKADDRS,
+            WSASend, WSASendTo, INVALID_SOCKET, LPFN_ACCEPTEX, LPFN_CONNECTEX,
+            LPFN_GETACCEPTEXSOCKADDRS, SIO_GET_EXTENSION_FUNCTION_POINTER, SOCKADDR,
+            SOCKADDR_STORAGE, SOL_SOCKET, SO_ERROR, SO_UPDATE_ACCEPT_CONTEXT,
+            SO_UPDATE_CONNECT_CONTEXT, WSAENOTSOCK, WSAID_ACCEPTEX, WSAID_CONNECTEX,
+            WSAID_GETACCEPTEXSOCKADDRS,
         },
         Storage::FileSystem::{FlushFileBuffers, ReadFile, WriteFile},
         System::{Pipes::ConnectNamedPipe, IO::OVERLAPPED},
@@ -35,7 +36,7 @@ use crate::driver::iocp::TIMER_PENDING;
 pub use crate::driver::time::Timeout;
 use crate::{
     buf::{AsIoSlices, AsIoSlicesMut, BufWrapper, BufWrapperMut, IntoInner, IoBuf, IoBufMut},
-    driver::{iocp::Overlapped, AsRawFd, Fd, FromRawFd, IntoRawFd, OpCode, RawFd},
+    driver::{iocp::Overlapped, Fd, FromRawFd, IntoRawFd, OpCode, RawFd},
     syscall,
 };
 
@@ -105,9 +106,9 @@ unsafe fn get_wsa_fn<F>(handle: Fd, fguid: GUID) -> io::Result<Option<F>> {
 
 /// Read a nonseekable file into specified buffer.
 pub struct Read<'arena, T: IoBufMut<'arena>> {
-    pub(crate) fd: Fd,
-    pub(crate) buffer: T,
-    pub(super) overlapped: Overlapped,
+    fd: Fd,
+    buffer: T,
+    overlapped: Overlapped,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -155,10 +156,10 @@ impl<'arena, T: IoBufMut<'arena>> OpCode for Read<'arena, T> {
 
 /// Read a file at specified position into specified buffer.
 pub struct ReadAt<'arena, T: IoBufMut<'arena>> {
-    pub(crate) fd: Fd,
-    pub(crate) offset: usize,
-    pub(crate) buffer: T,
-    pub(super) overlapped: Overlapped,
+    fd: Fd,
+    offset: usize,
+    buffer: T,
+    overlapped: Overlapped,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -212,9 +213,9 @@ impl<'arena, T: IoBufMut<'arena>> OpCode for ReadAt<'arena, T> {
 
 /// Write a nonseekable file from specified buffer.
 pub struct Write<'arena, T: IoBuf<'arena>> {
-    pub(crate) fd: Fd,
-    pub(crate) buffer: T,
-    pub(super) overlapped: Overlapped,
+    fd: Fd,
+    buffer: T,
+    overlapped: Overlapped,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -260,10 +261,10 @@ impl<'arena, T: IoBuf<'arena>> OpCode for Write<'arena, T> {
 
 /// Write a file at specified position from specified buffer.
 pub struct WriteAt<'arena, T: IoBuf<'arena>> {
-    pub(crate) fd: Fd,
-    pub(crate) offset: usize,
-    pub(crate) buffer: T,
-    pub(super) overlapped: Overlapped,
+    fd: Fd,
+    offset: usize,
+    buffer: T,
+    overlapped: Overlapped,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -317,9 +318,9 @@ static CONNECT_EX: OnceLock<LPFN_CONNECTEX> = OnceLock::new();
 
 /// Connect to a remote address.
 pub struct Connect {
-    pub(crate) fd: Fd,
-    pub(crate) addr: SockAddr,
-    pub(super) overlapped: Overlapped,
+    fd: Fd,
+    addr: SockAddr,
+    overlapped: Overlapped,
 }
 
 impl Connect {
@@ -386,9 +387,9 @@ impl OpCode for Connect {
 
 /// Sync data to the disk.
 pub struct Sync {
-    pub(crate) fd: Fd,
+    fd: Fd,
     #[allow(dead_code)]
-    pub(crate) datasync: bool,
+    datasync: bool,
 }
 
 impl Sync {
@@ -422,31 +423,45 @@ static GET_ADDRS: OnceLock<LPFN_GETACCEPTEXSOCKADDRS> = OnceLock::new();
 
 /// Accept a connection.
 pub struct Accept {
-    pub(crate) fd: Fd,
-    pub(crate) accept_fd: RawFd,
-    pub(crate) buffer: SOCKADDR_STORAGE,
-    pub(super) overlapped: Overlapped,
+    fd: Fd,
+    accept_fd: RawFd,
+    accept_sock_opts: Option<AcceptSocketOpts>,
+    buffer: SOCKADDR_STORAGE,
+    overlapped: Overlapped,
+}
+
+struct AcceptSocketOpts {
+    domain: Domain,
+    ty: Type,
+    protocol: Option<Protocol>,
 }
 
 impl Accept {
-    /// Try to create [`Accept`].
+    const INVALID_SOCKET: RawFd = INVALID_SOCKET as RawFd;
+
+    /// Create [`Accept`] with socket options.
     ///
-    /// Common fallible interface between IOCP/unix
-    pub fn try_new(
-        fd: Fd,
-        domain: Domain,
-        ty: Type,
-        protocol: Option<Protocol>,
-    ) -> io::Result<Self> {
-        let accept_sock = Socket::new(domain, ty, protocol)?;
-        Ok(Self::new(fd, accept_sock.as_raw_fd()))
+    /// Accept socket will be created on operation execution.
+    pub fn with_socket_opts(fd: Fd, domain: Domain, ty: Type, protocol: Option<Protocol>) -> Self {
+        Self {
+            fd,
+            accept_fd: Self::INVALID_SOCKET,
+            accept_sock_opts: Some(AcceptSocketOpts {
+                domain,
+                ty,
+                protocol,
+            }),
+            buffer: unsafe { std::mem::zeroed() },
+            overlapped: Overlapped::new(usize::MAX),
+        }
     }
 
-    /// Create [`Accept`]. `accept_fd` should not be bound.
+    /// Create [`Accept`] with the provided accept socket fd. `accept_fd` should not be bound.
     pub fn new(fd: Fd, accept_fd: RawFd) -> Self {
         Self {
             fd,
             accept_fd,
+            accept_sock_opts: None,
             buffer: unsafe { std::mem::zeroed() },
             overlapped: Overlapped::new(usize::MAX),
         }
@@ -511,6 +526,15 @@ impl Accept {
 
 impl OpCode for Accept {
     unsafe fn operate(&mut self, user_data: usize) -> Poll<io::Result<usize>> {
+        if self.accept_fd == Self::INVALID_SOCKET {
+            if let Some(opts) = &self.accept_sock_opts {
+                // create socket with accept socket options
+                self.accept_fd = match Socket::new(opts.domain, opts.ty, opts.protocol) {
+                    Ok(sock) => sock.into_raw_fd(),
+                    Err(err) => return Poll::Ready(Err(err)),
+                }
+            }
+        }
         self.overlapped.user_data = user_data;
         let accept_fn = ACCEPT_EX
             .get_or_try_init(|| get_wsa_fn(self.fd, WSAID_ACCEPTEX))?
@@ -571,9 +595,9 @@ impl<'arena, T: IoBufMut<'arena>> OpCode for Recv<'arena, T> {
 
 /// Receive a single piece of data into scattered buffers from remote.
 pub struct RecvVectoredImpl<'arena, T: AsIoSlicesMut<'arena>> {
-    pub(crate) fd: Fd,
-    pub(crate) buffer: T,
-    pub(super) overlapped: Overlapped,
+    fd: Fd,
+    buffer: T,
+    overlapped: Overlapped,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -658,9 +682,9 @@ impl<'arena, T: IoBuf<'arena>> OpCode for Send<'arena, T> {
 
 /// Send a single piece of data to remote using scattered buffers.
 pub struct SendVectoredImpl<'arena, T: AsIoSlices<'arena>> {
-    pub(crate) fd: Fd,
-    pub(crate) buffer: T,
-    pub(super) overlapped: Overlapped,
+    fd: Fd,
+    buffer: T,
+    overlapped: Overlapped,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -743,11 +767,11 @@ impl<'arena, T: IoBufMut<'arena>> OpCode for RecvFrom<'arena, T> {
 
 /// Receive a single piece of data and source address using scattered buffers.
 pub struct RecvMsgImpl<'arena, T: AsIoSlicesMut<'arena>> {
-    pub(crate) fd: Fd,
-    pub(crate) buffer: T,
-    pub(crate) addr: SOCKADDR_STORAGE,
-    pub(crate) addr_len: socklen_t,
-    pub(super) overlapped: Overlapped,
+    fd: Fd,
+    buffer: T,
+    addr: SOCKADDR_STORAGE,
+    addr_len: socklen_t,
+    overlapped: Overlapped,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -837,10 +861,10 @@ impl<'arena, T: IoBuf<'arena>> OpCode for SendTo<'arena, T> {
 
 /// Send a single piece of data from scattered buffers to the specified address.
 pub struct SendMsgImpl<'arena, T: AsIoSlices<'arena>> {
-    pub(crate) fd: Fd,
-    pub(crate) buffer: T,
-    pub(crate) addr: SockAddr,
-    pub(super) overlapped: Overlapped,
+    fd: Fd,
+    buffer: T,
+    addr: SockAddr,
+    overlapped: Overlapped,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -892,8 +916,8 @@ impl<'arena, T: AsIoSlices<'arena>> OpCode for SendMsgImpl<'arena, T> {
 
 /// Connect a named pipe server.
 pub struct ConnectNamedPipe {
-    pub(crate) fd: Fd,
-    pub(super) overlapped: Overlapped,
+    fd: Fd,
+    overlapped: Overlapped,
 }
 
 impl ConnectNamedPipe {

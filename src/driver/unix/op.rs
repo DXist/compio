@@ -10,8 +10,8 @@ use crate::{
 
 /// Read a nonseekable file into specified buffer.
 pub struct Read<'arena, T: IoBufMut<'arena>> {
-    pub(crate) fd: FdOrFixed,
-    pub(crate) buffer: T,
+    pub(in crate::driver) fd: FdOrFixed,
+    pub(in crate::driver) buffer: T,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -36,9 +36,9 @@ impl<'arena, T: IoBufMut<'arena>> IntoInner for Read<'arena, T> {
 
 /// Read a file at specified position into specified buffer.
 pub struct ReadAt<'arena, T: IoBufMut<'arena>> {
-    pub(crate) fd: FdOrFixed,
-    pub(crate) offset: usize,
-    pub(crate) buffer: T,
+    pub(in crate::driver) fd: FdOrFixed,
+    pub(in crate::driver) offset: usize,
+    pub(in crate::driver) buffer: T,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -64,8 +64,8 @@ impl<'arena, T: IoBufMut<'arena>> IntoInner for ReadAt<'arena, T> {
 
 /// Write a nonseekable file from specified buffer.
 pub struct Write<'arena, T: IoBuf<'arena>> {
-    pub(crate) fd: FdOrFixed,
-    pub(crate) buffer: T,
+    pub(in crate::driver) fd: FdOrFixed,
+    pub(in crate::driver) buffer: T,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -90,9 +90,9 @@ impl<'arena, T: IoBuf<'arena>> IntoInner for Write<'arena, T> {
 
 /// Write a file at specified position from specified buffer.
 pub struct WriteAt<'arena, T: IoBuf<'arena>> {
-    pub(crate) fd: FdOrFixed,
-    pub(crate) offset: usize,
-    pub(crate) buffer: T,
+    pub(in crate::driver) fd: FdOrFixed,
+    pub(in crate::driver) offset: usize,
+    pub(in crate::driver) buffer: T,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -118,10 +118,10 @@ impl<'arena, T: IoBuf<'arena>> IntoInner for WriteAt<'arena, T> {
 
 /// Connect to a remote address.
 pub struct Connect {
-    pub(crate) fd: FdOrFixed,
-    pub(crate) addr: SockAddr,
+    pub(in crate::driver) fd: FdOrFixed,
+    pub(in crate::driver) addr: SockAddr,
     #[cfg(not(target_os = "linux"))]
-    pub(crate) initiated: bool,
+    pub(in crate::driver) initiated: bool,
 }
 
 impl Connect {
@@ -154,22 +154,22 @@ impl Connect {
 
 /// Accept a connection.
 pub struct Accept {
-    pub(crate) fd: FdOrFixed,
-    pub(crate) buffer: sockaddr_storage,
-    pub(crate) addr_len: socklen_t,
+    pub(in crate::driver) fd: FdOrFixed,
+    pub(in crate::driver) buffer: sockaddr_storage,
+    pub(in crate::driver) addr_len: socklen_t,
 }
 
 impl Accept {
-    /// Try to create [`Accept`].
+    /// Create [`Accept`] with the provided accept socket options.
     ///
-    /// Common fallible interface between IOCP/unix
-    pub fn try_new(
+    /// Similar interface between IOCP/unix
+    pub fn with_socket_opts(
         fd: impl IntoFdOrFixed<Target = FdOrFixed>,
         _domain: Domain,
         _ty: Type,
         _protocol: Option<Protocol>,
-    ) -> io::Result<Self> {
-        Ok(Self::new(fd))
+    ) -> Self {
+        Self::new(fd)
     }
 
     /// Create [`Accept`].
@@ -201,9 +201,9 @@ impl Accept {
 
 /// Sync data to the disk.
 pub struct Sync {
-    pub(crate) fd: FdOrFixed,
+    pub(in crate::driver) fd: FdOrFixed,
     #[allow(dead_code)]
-    pub(crate) datasync: bool,
+    pub(in crate::driver) datasync: bool,
 }
 
 impl Sync {
@@ -226,8 +226,8 @@ impl Sync {
 
 /// Receive a single piece of data in a single buffer from remote.
 pub struct Recv<'arena, T: IoBufMut<'arena>> {
-    pub(crate) fd: FdOrFixed,
-    pub(crate) buffer: T,
+    pub(in crate::driver) fd: FdOrFixed,
+    pub(in crate::driver) buffer: T,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -252,8 +252,8 @@ impl<'arena, T: IoBufMut<'arena>> IntoInner for Recv<'arena, T> {
 
 /// Receive a single piece of data into scattered buffers from remote.
 pub struct RecvVectoredImpl<'arena, T: AsIoSlicesMut<'arena>> {
-    pub(crate) fd: FdOrFixed,
-    pub(crate) buffer: T,
+    pub(in crate::driver) fd: FdOrFixed,
+    pub(in crate::driver) buffer: T,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -278,8 +278,8 @@ impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvVectoredImpl<'arena, T>
 
 /// Send a single piece of data from a single buffer to remote.
 pub struct Send<'arena, T: IoBuf<'arena>> {
-    pub(crate) fd: FdOrFixed,
-    pub(crate) buffer: T,
+    pub(in crate::driver) fd: FdOrFixed,
+    pub(in crate::driver) buffer: T,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -304,8 +304,8 @@ impl<'arena, T: IoBuf<'arena>> IntoInner for Send<'arena, T> {
 
 /// Send a single piece of data to remote using scattered buffers.
 pub struct SendVectoredImpl<'arena, T: AsIoSlices<'arena>> {
-    pub(crate) fd: FdOrFixed,
-    pub(crate) buffer: T,
+    pub(in crate::driver) fd: FdOrFixed,
+    pub(in crate::driver) buffer: T,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -330,10 +330,10 @@ impl<'arena, T: AsIoSlices<'arena>> IntoInner for SendVectoredImpl<'arena, T> {
 
 /// Receive a single piece of data and source address using scattered buffers.
 pub struct RecvMsgImpl<'arena, T: AsIoSlicesMut<'arena>> {
-    pub(crate) fd: FdOrFixed,
-    pub(crate) buffer: T,
-    pub(crate) addr: sockaddr_storage,
-    pub(crate) msg: libc::msghdr,
+    pub(in crate::driver) fd: FdOrFixed,
+    pub(in crate::driver) buffer: T,
+    pub(in crate::driver) addr: sockaddr_storage,
+    pub(in crate::driver) msg: libc::msghdr,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -349,7 +349,7 @@ impl<'arena, T: AsIoSlicesMut<'arena>> RecvMsgImpl<'arena, T> {
         }
     }
 
-    pub(crate) fn set_msg(&mut self) -> &mut libc::msghdr {
+    pub(in crate::driver) fn set_msg(&mut self) -> &mut libc::msghdr {
         // SAFETY: IoSliceMut is Unpin
         let (slices, len) = unsafe {
             let slices = self.buffer.as_io_slices_mut();
@@ -381,10 +381,10 @@ impl<'arena, T: AsIoSlicesMut<'arena>> IntoInner for RecvMsgImpl<'arena, T> {
 
 /// Send a single piece of data from scattered buffers to the specified address.
 pub struct SendMsgImpl<'arena, T: AsIoSlices<'arena>> {
-    pub(crate) fd: FdOrFixed,
-    pub(crate) buffer: T,
-    pub(crate) addr: SockAddr,
-    pub(crate) msg: libc::msghdr,
+    pub(in crate::driver) fd: FdOrFixed,
+    pub(in crate::driver) buffer: T,
+    pub(in crate::driver) addr: SockAddr,
+    pub(in crate::driver) msg: libc::msghdr,
     _lifetime: PhantomData<&'arena ()>,
 }
 
@@ -400,7 +400,7 @@ impl<'arena, T: AsIoSlices<'arena>> SendMsgImpl<'arena, T> {
         }
     }
 
-    pub(crate) fn set_msg(&mut self) -> &libc::msghdr {
+    pub(in crate::driver) fn set_msg(&mut self) -> &libc::msghdr {
         // SAFETY: IoSlice is Unpin
         let (slices, len) = unsafe {
             let slices = self.buffer.as_io_slices();
