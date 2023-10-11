@@ -337,7 +337,7 @@ impl Connect {
     /// Post operation socket handling.
     ///
     /// Set SO_UPDATE_CONNECT_CONTEXT
-    pub fn on_connect(self, result: io::Result<usize>) -> io::Result<()> {
+    pub fn on_connect(&self, result: io::Result<usize>) -> io::Result<()> {
         let _ = result?;
         self.update_context()?;
         Ok(())
@@ -356,16 +356,6 @@ impl Connect {
             )
         )?;
         Ok(())
-    }
-}
-
-impl Default for Connect {
-    fn default() -> Self {
-        Self {
-            fd: INVALID_FD,
-            addr: unsafe { std::mem::zeroed },
-            overlapped: Overlapped::new(usize::MAX),
-        }
     }
 }
 

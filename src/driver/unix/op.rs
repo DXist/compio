@@ -147,7 +147,7 @@ impl Connect {
     /// Post operation socket handling.
     ///
     /// For compatibility with IOCP.
-    pub fn on_connect(self, result: io::Result<usize>) -> io::Result<()> {
+    pub fn on_connect(&self, result: io::Result<usize>) -> io::Result<()> {
         result.map(|_| ())
     }
 }

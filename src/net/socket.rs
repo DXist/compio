@@ -86,17 +86,8 @@ impl Socket {
     pub async fn connect_async(&self, addr: &SockAddr) -> io::Result<()> {
         let fd = self.attach()?;
         let op = Connect::new(fd, addr.clone());
-        let (res, _op) = RUNTIME.with(|runtime| runtime.submit(op)).await;
-        #[cfg(target_os = "windows")]
-        {
-            res?;
-            _op.update_context()?;
-            Ok(())
-        }
-        #[cfg(unix)]
-        {
-            res.map(|_| ())
-        }
+        let (res, op) = RUNTIME.with(|runtime| runtime.submit(op)).await;
+        op.on_connect(res)
     }
 
     #[cfg(feature = "runtime")]
