@@ -479,6 +479,7 @@ impl Accept {
             ty,
             protocol,
         });
+        self.overlapped = Overlapped::new(usize::MAX);
     }
 
     /// Create [`Accept`] with the provided accept socket fd. `accept_fd` should not be bound.
