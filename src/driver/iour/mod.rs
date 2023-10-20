@@ -2,7 +2,7 @@
 use std::alloc::Allocator;
 #[doc(no_inline)]
 pub use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
-use std::{io, marker::PhantomData, time::Duration};
+use std::{fmt, io, marker::PhantomData, time::Duration};
 
 use io_uring::{
     cqueue,
@@ -23,7 +23,7 @@ pub(crate) mod op;
 /// Attached file descriptor.
 ///
 /// Can't be moved between threads.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Fd {
     raw_fd: RawFd,
     _not_send_not_sync: PhantomData<*const ()>,
@@ -44,8 +44,14 @@ impl Fd {
     }
 }
 
+impl fmt::Debug for Fd {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Fd").field(&self.raw_fd).finish()
+    }
+}
+
 /// Fixed fd is offset in registered files array
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FixedFd {
     offset: u32,
     _not_send_not_sync: PhantomData<*const ()>,
@@ -63,6 +69,12 @@ impl FixedFd {
     #[inline]
     fn as_offset(&self) -> u32 {
         self.offset
+    }
+}
+
+impl fmt::Debug for FixedFd {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("FixedFd").field(&self.offset).finish()
     }
 }
 

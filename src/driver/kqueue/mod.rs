@@ -2,7 +2,7 @@
 use std::alloc::Allocator;
 #[doc(no_inline)]
 pub use std::os::fd::{AsFd, AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
-use std::{collections::VecDeque, convert::identity, io, marker::PhantomData, time::Duration};
+use std::{collections::VecDeque, convert::identity, fmt, io, marker::PhantomData, time::Duration};
 
 use bit_set::BitSet;
 use rustix::event::kqueue::{kevent, kqueue, Event, EventFilter, EventFlags};
@@ -19,7 +19,7 @@ pub(crate) mod op;
 /// Attached file descriptor.
 ///
 /// Can't be moved between threads.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Fd {
     raw_fd: RawFd,
     _not_send_not_sync: PhantomData<*const ()>,
@@ -37,6 +37,12 @@ impl Fd {
     #[inline]
     fn as_raw_fd(&self) -> RawFd {
         self.raw_fd
+    }
+}
+
+impl fmt::Debug for Fd {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Fd").field(&self.raw_fd).finish()
     }
 }
 

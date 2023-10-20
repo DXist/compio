@@ -1,7 +1,7 @@
 #[cfg(feature = "allocator_api")]
 use std::alloc::Allocator;
 use std::{
-    io,
+    fmt, io,
     marker::PhantomData,
     os::windows::prelude::{
         AsRawHandle, AsRawSocket, FromRawHandle, FromRawSocket, IntoRawHandle, IntoRawSocket,
@@ -106,7 +106,7 @@ impl IntoRawFd for socket2::Socket {
 /// Attached file descriptor.
 ///
 /// Can't be moved between threads.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Fd {
     raw_fd: RawFd,
     _not_send_not_sync: PhantomData<*const ()>,
@@ -124,6 +124,12 @@ impl Fd {
     #[inline]
     fn as_raw_fd(&self) -> RawFd {
         self.raw_fd
+    }
+}
+
+impl fmt::Debug for Fd {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Fd").field(&self.raw_fd).finish()
     }
 }
 
